@@ -26,7 +26,8 @@ expressions=Any[]
 lowerBounds=Float64[]
 upperBounds=Float64[]
 
-pastPoints=Float64[]
+lowestPoint=Float64
+highestPoint=Float64
 
 #checks if a constriant is satisified
 #note that jump only supports <=, >= and =
@@ -35,21 +36,10 @@ function constriantSatified(equalityType,rightHandSide,leftHandSide)
             return (leftHandSide <= rightHandSide)
     elseif (isequal(equalityType,">="))
             return (leftHandSide >= rightHandSide)
+    #equality constriant is satisfied if the rightHandSide is between lowest and highest point
+    #lowest and hightest points are updated when random points are generated
     elseif (isequal(equalityType,"="))
-            lessThan=false
-            greaterThen=false
-            for value=pastPoints
-                if(value <= rightHandSide)
-                    lessThan=true
-                end
-                if(value >= rightHandSide)
-                    greaterThen=true
-                end
-                if(lessThan && greaterThen)
-                      return true
-                end
-            end
-            return false
+            return ((rightHandSide >= lowestPoint) && (rightHandSide <= highestPoint))
     end
 end
 
@@ -57,7 +47,13 @@ end
 function allConstrinatsSatisfied()
     for j=1:numberOfVariable
           leftHandSide = getValue(expressions[j])
-          push!(pastPoints,leftHandSide)
+
+          if (leftHandSide<lowestPoint)
+                global lowestPoint=leftHandSide
+          end
+          if (leftHandSide>highestPoint)
+                global highestPoint=leftHandSide
+          end
           value =  constriantSatified(equalityTypes[j],rightHandSides[j],leftHandSide)
           if (!value)
                  return false
@@ -100,6 +96,9 @@ function shrinkBounds()
             #offset the point to be from the bottom of the cut to the top of the cut
             range=(oldUpper-upperBounds[i])
             offset=(lowerBounds[i] + (upperBounds[i]-lowerBounds[i]))
+
+            global lowestPoint=offset
+            global highestPoint=upperBounds[i]
 
             #check n random points
             #if none are feasible then cut
