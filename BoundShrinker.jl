@@ -83,74 +83,82 @@ function addBound(lowerBound,upperBound)
         push!(upperBounds,upperBound)
 end
 
+#shrinks upper and lower bounds of each variable
 function shrinkBounds()
-    #upper bounds
     for i=1:numberOfVariable
-        keepGoing=true
-        #upper bound
-        while(keepGoing)
-            oldUpper=upperBounds[i]
-            upperBounds[i]=upperBounds[i]*reductionFactor
+        upperReference = @spawn shrinkUpperBond(i)
+        lowerReference = @spawn shrinkLowerBound(i)
+        wait(upperReference)
+        wait(lowerReference)
+    end
+end
 
-            #random point between 0 and the width of the cut, or (old top bound - new top bound)
-            #offset the point to be from the bottom of the cut to the top of the cut
-            range=(oldUpper-upperBounds[i])
-            offset=(lowerBounds[i] + (upperBounds[i]-lowerBounds[i]))
+#shrinks the upper bound of variable x[i]
+function shrinkUpperBond(i)
+    keepGoing=true
+    #upper bound
+    while(keepGoing)
+        oldUpper=upperBounds[i]
+        upperBounds[i]=upperBounds[i]*reductionFactor
 
-            global lowestPoint=offset
-            global highestPoint=upperBounds[i]
+        #random point between 0 and the width of the cut, or (old top bound - new top bound)
+        #offset the point to be from the bottom of the cut to the top of the cut
+        range=(oldUpper-upperBounds[i])
+        offset=(lowerBounds[i] + (upperBounds[i]-lowerBounds[i]))
 
-            #check n random points
-            #if none are feasible then cut
-            for h= 1:randomPoints
-                #for each random point you are making, generate a x,y,z,... value
-                for j=1:numberOfVariable
-                        point = (rand(randomNumberGenerator) * range) + offset
-                    setValue(x[j],point)
-                end
+        global lowestPoint=offset
+        global highestPoint=upperBounds[i]
 
-                if (allConstrinatsSatisfied())
-                      #undo last cut
-                      upperBounds[i]=oldUpper
-                      keepGoing=false
-                      h=randomPoints #break
-                else
-                     keepGoing=true
-                end
+        #check n random points
+        #if none are feasible then cut
+        for h= 1:randomPoints
+            #for each random point you are making, generate a x,y,z,... value
+            for j=1:numberOfVariable
+                    point = (rand(randomNumberGenerator) * range) + offset
+                setValue(x[j],point)
+            end
+
+            if (allConstrinatsSatisfied())
+                  #undo last cut
+                  upperBounds[i]=oldUpper
+                  keepGoing=false
+                  h=randomPoints #break
+            else
+                 keepGoing=true
             end
         end
     end
+end
 
-    #lower bounds
-    for i=1:numberOfVariable
-        keepGoing=true
-        #upper bound
-        while(keepGoing)
-            oldLower=lowerBounds[i]
-            lowerBounds[i]=lowerBounds[i]*increaseFactor
+#shrinks the lower bound of variable x[i]
+function shrinkLowerBound(i)
+    keepGoing=true
+    #upper bound
+    while(keepGoing)
+        oldLower=lowerBounds[i]
+        lowerBounds[i]=lowerBounds[i]*increaseFactor
 
-            #random point between 0 and the width of the cut, or (new bottom bound - old bottom bound)
-            #offset the point to be from the bottom of the cut to the top of the cut
-            range=(lowerBounds[i]-oldLower)
-            offset=oldLower
+        #random point between 0 and the width of the cut, or (new bottom bound - old bottom bound)
+        #offset the point to be from the bottom of the cut to the top of the cut
+        range=(lowerBounds[i]-oldLower)
+        offset=oldLower
 
-            #check n random points
-            #if none are feasible then cut
-            for h= 1:randomPoints
-                #for each random point you are making, generate a x,y,z,... value
-                for j=1:numberOfVariable
-                        point = (rand(randomNumberGenerator) * range) + offset
-                    setValue(x[j],point)
-                end
+        #check n random points
+        #if none are feasible then cut
+        for h= 1:randomPoints
+            #for each random point you are making, generate a x,y,z,... value
+            for j=1:numberOfVariable
+                    point = (rand(randomNumberGenerator) * range) + offset
+                setValue(x[j],point)
+            end
 
-                if (allConstrinatsSatisfied())
-                      #undo last cut
-                      lowerBounds[i]=oldLower
-                      keepGoing=false
-                      h=randomPoints #break
-                else
-                     keepGoing=true
-                end
+            if (allConstrinatsSatisfied())
+                  #undo last cut
+                  lowerBounds[i]=oldLower
+                  keepGoing=false
+                  h=randomPoints #break
+            else
+                 keepGoing=true
             end
         end
     end
