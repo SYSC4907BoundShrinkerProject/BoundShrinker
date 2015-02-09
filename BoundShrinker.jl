@@ -5,11 +5,10 @@ using JuMP
 
 #Global Variables
 #Constants
-reductionFactor=0.9
-increaseFactor=1.1
-randomPoints=50
+changeSize=0.1
+randomPoints=500
 maximiumVariables=100                       #How many variables the software can support
-modelName="model2.jl"                       #The name of the model file.
+modelName="model3.jl"                       #The name of the model file.
 
 randomNumberGenerator = MersenneTwister()
 numberOfVariable=0
@@ -65,11 +64,11 @@ end
 #note that jump only supports <=, >= and =
 function addConstraint(expression,equalityType,rightHandSide)
         if (isequal(equalityType,"<="))
-                @addConstraint(m, expression <= rightHandSide)
+                @addNLConstraint(m, expression <= rightHandSide)
         elseif (isequal(equalityType,">="))
-                @addConstraint(m, expression >= rightHandSide)
+                @addNLConstraint(m, expression >= rightHandSide)
         elseif (isequal(equalityType,"="))
-                @addConstraint(m, expression == rightHandSide)
+                @addNLConstraint(m, expression == rightHandSide)
         end
         push!(equalityTypes,equalityType)
         push!(rightHandSides,rightHandSide)
@@ -83,23 +82,45 @@ function addBound(lowerBound,upperBound)
         push!(upperBounds,upperBound)
 end
 
+#If a bound is exactly zero then multiplying won't change it.
+#In this case you add or subtract a small number instead.
+#This number is calculated before hand and is small compared
+#to the intial difference between the upper and lower bound.
+function findZeroOffset(i)
+   difference = upperBounds[i] - lowerBounds[i]
+   zeroOffset = difference*changeSize
+   if(changeSize<zeroOffset)
+           return changeSize
+   else
+           return zeroOffset
+    end
+end
+
 #shrinks upper and lower bounds of each variable
 function shrinkBounds()
     for i=1:numberOfVariable
-        upperReference = @spawn shrinkUpperBond(i)
-        lowerReference = @spawn shrinkLowerBound(i)
+        zeroOffset = findZeroOffset(i)
+        upperReference = @spawn shrinkUpperBond(i,zeroOffset)
+        lowerReference = @spawn shrinkLowerBound(i,zeroOffset)
         wait(upperReference)
         wait(lowerReference)
     end
 end
 
 #shrinks the upper bound of variable x[i]
-function shrinkUpperBond(i)
+function shrinkUpperBond(i,zeroOffset)
     keepGoing=true
     #upper bound
     while(keepGoing)
         oldUpper=upperBounds[i]
-        upperBounds[i]=upperBounds[i]*reductionFactor
+
+        #If the bound is exactly zero then multiplying it won't change it.
+        #Subtract the zeroOffset instead.
+        if(upperBounds[i]==0)
+             upperBounds[i]-=zeroOffset;
+        else
+            upperBounds[i]=upperBounds[i]*(1-changeSize)
+        end
 
         #random point between 0 and the width of the cut, or (old top bound - new top bound)
         #offset the point to be from the bottom of the cut to the top of the cut
@@ -131,12 +152,19 @@ function shrinkUpperBond(i)
 end
 
 #shrinks the lower bound of variable x[i]
-function shrinkLowerBound(i)
+function shrinkLowerBound(i,zeroOffset)
     keepGoing=true
     #upper bound
     while(keepGoing)
         oldLower=lowerBounds[i]
-        lowerBounds[i]=lowerBounds[i]*increaseFactor
+
+        #If the bound is exactly zero then multiplying it won't change it.
+        #Add the zeroOffset instead.
+        if(lowerBounds[i]==0)
+             lowerBounds[i]+=zeroOffset;
+        else
+            lowerBounds[i]=lowerBounds[i]*(1+changeSize)
+        end
 
         #random point between 0 and the width of the cut, or (new bottom bound - old bottom bound)
         #offset the point to be from the bottom of the cut to the top of the cut
