@@ -7,8 +7,8 @@ using JuMP
 #Constants
 changeSize=0.1
 randomPoints=500
-maximiumVariables=100                       #How many variables the software can support
-modelName="model3.jl"                       #The name of the model file.
+maximiumVariables=100               #How many variables the software can support
+modelName="model.jl"                #The name of the model file.
 
 randomNumberGenerator = MersenneTwister()
 numberOfVariable=0
@@ -100,6 +100,8 @@ end
 function shrinkBounds()
     for i=1:numberOfVariable
         zeroOffset = findZeroOffset(i)
+        global initialLower=lowerBounds[i]
+        global initialUpper=upperBounds[i]
         upperReference = @spawn shrinkUpperBond(i,zeroOffset)
         lowerReference = @spawn shrinkLowerBound(i,zeroOffset)
         wait(upperReference)
@@ -120,6 +122,11 @@ function shrinkUpperBond(i,zeroOffset)
              upperBounds[i]-=zeroOffset;
         else
             upperBounds[i]=upperBounds[i]*(1-changeSize)
+        end
+
+        if(upperBounds[i]<=initialLower)
+                keepGoing=false
+                break
         end
 
         #random point between 0 and the width of the cut, or (old top bound - new top bound)
@@ -166,6 +173,11 @@ function shrinkLowerBound(i,zeroOffset)
             lowerBounds[i]=lowerBounds[i]*(1+changeSize)
         end
 
+        if(lowerBounds[i]>=initialUpper)
+                keepGoing=false
+                break
+        end
+
         #random point between 0 and the width of the cut, or (new bottom bound - old bottom bound)
         #offset the point to be from the bottom of the cut to the top of the cut
         range=(lowerBounds[i]-oldLower)
@@ -197,8 +209,12 @@ function main()
     shrinkBounds()
     #display shrunk bounds
     for i=1:numberOfVariable
-        print(lowerBounds[i]," <= x[", i,"] <= ")
-        println(upperBounds[i])
+        if(lowerBounds[i]>=upperBounds[i])
+            println("No feasible region for variable x[", i,"]")
+        else
+            print(lowerBounds[i]," <= x[", i,"] <= ")
+            println(upperBounds[i])
+        end
     end
 end
 main()
