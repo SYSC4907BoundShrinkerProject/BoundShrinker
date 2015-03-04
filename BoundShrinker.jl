@@ -10,6 +10,8 @@ randomPoints=500
 maximiumVariables=100               #How many variables the software can support
 modelName="model.jl"                #The name of the model file.
 
+
+
 randomNumberGenerator = MersenneTwister()
 numberOfVariable=0
 m = Model()                                 #JuMP model
@@ -27,6 +29,7 @@ upperBounds=Float64[]
 
 lowestPoint=Float64
 highestPoint=Float64
+
 
 #checks if a constriant is satisified
 #note that jump only supports <=, >= and =
@@ -106,6 +109,17 @@ function shrinkBounds()
         lowerReference = @spawn shrinkLowerBound(i,zeroOffset)
         wait(upperReference)
         wait(lowerReference)
+    end
+end
+
+#shrinks upper and lower bounds of each variable
+function shrinkBoundsNoParrelism()
+    for i=1:numberOfVariable
+        zeroOffset = findZeroOffset(i)
+        global initialLower=lowerBounds[i]
+        global initialUpper=upperBounds[i]
+        shrinkUpperBond(i,zeroOffset)
+        shrinkLowerBound(i,zeroOffset)
     end
 end
 
@@ -205,8 +219,20 @@ function shrinkLowerBound(i,zeroOffset)
 end
 
 function main()
+
+    startTime=time_ns()
+
     include(modelName)
-    shrinkBounds()
+
+    if(parrelism)
+        shrinkBounds()
+    else
+        shrinkBoundsNoParrelism()
+    end
+
+    endTime=time_ns()
+    duruation=endTime-startTime
+
     #display shrunk bounds
     for i=1:numberOfVariable
         if(lowerBounds[i]>=upperBounds[i])
@@ -216,5 +242,14 @@ function main()
             println(upperBounds[i])
         end
     end
+
+    if(parrelism)
+        println("Time with parrelism: ", duruation, " miliseconds")
+    else
+        println("Time without parrelism: ", duruation, " miliseconds")
+    end
 end
+
+
+parrelism=true
 main()
