@@ -6,10 +6,30 @@ using JuMP
 #Global Variables
 #Constants
 changeSize=0.1
-randomPoints=500
-maximiumVariables=100               #How many variables the software can support
-modelName="model.jl"                #The name of the model file.
+maximiumVariables=1000                  #How many variables the software can support
+modelName="model.jl"                    #The name of the model file.
+numberOfThreads=4
+randomPoints=3000/numberOfThreads
 
+function main()
+    startTime=time_ns()
+    include(modelName)
+    shrinkBounds()
+    endTime=time_ns()
+    duruation=endTime-startTime
+
+    #display shrunk bounds
+    for i=1:numberOfVariable
+        if(lowerBounds[i]>=upperBounds[i])
+            println("No feasible region for variable x[", i,"]")
+        else
+            print(lowerBounds[i]," <= x[", i,"] <= ")
+            println(upperBounds[i])
+        end
+    end
+
+    println("Time with ",numberOfThreads," simultaneous executions: ", duruation/1000000000, " seconds")
+end
 
 
 randomNumberGenerator = MersenneTwister()
@@ -29,7 +49,6 @@ upperBounds=Float64[]
 
 lowestPoint=Float64
 highestPoint=Float64
-
 
 #checks if a constriant is satisified
 #note that jump only supports <=, >= and =
@@ -105,19 +124,6 @@ function shrinkBounds()
         zeroOffset = findZeroOffset(i)
         global initialLower=lowerBounds[i]
         global initialUpper=upperBounds[i]
-        upperReference = @spawn shrinkUpperBond(i,zeroOffset)
-        lowerReference = @spawn shrinkLowerBound(i,zeroOffset)
-        wait(upperReference)
-        wait(lowerReference)
-    end
-end
-
-#shrinks upper and lower bounds of each variable
-function shrinkBoundsNoParrelism()
-    for i=1:numberOfVariable
-        zeroOffset = findZeroOffset(i)
-        global initialLower=lowerBounds[i]
-        global initialUpper=upperBounds[i]
         shrinkUpperBond(i,zeroOffset)
         shrinkLowerBound(i,zeroOffset)
     end
@@ -151,23 +157,25 @@ function shrinkUpperBond(i,zeroOffset)
         global lowestPoint=offset
         global highestPoint=upperBounds[i]
 
-        #check n random points
-        #if none are feasible then cut
-        for h= 1:randomPoints
-            #for each random point you are making, generate a x,y,z,... value
-            for j=1:numberOfVariable
-                    point = (rand(randomNumberGenerator) * range) + offset
-                setValue(x[j],point)
+        refs = Any[]
+        for(thread=1:numberOfThreads)
+            ref = @spawn generatePoints(range,offset)
+            push!(refs,ref)
+        end
+        result = false
+        for(thread=1:numberOfThreads)
+             if(fetch(refs[thread]))
+                result=true
             end
+        end
 
-            if (allConstrinatsSatisfied())
-                  #undo last cut
-                  upperBounds[i]=oldUpper
-                  keepGoing=false
-                  h=randomPoints #break
-            else
-                 keepGoing=true
-            end
+        if (result)
+                #undo last cut
+                upperBounds[i]=oldUpper
+                keepGoing=false
+                h=randomPoints #break
+        else
+                keepGoing=true
         end
     end
 end
@@ -197,59 +205,47 @@ function shrinkLowerBound(i,zeroOffset)
         range=(lowerBounds[i]-oldLower)
         offset=oldLower
 
+        global lowestPoint=offset
+        global highestPoint=upperBounds[i]
+
+        refs = Any[]
+        for(thread=1:numberOfThreads)
+            ref = @spawn generatePoints(range,offset)
+            push!(refs,ref)
+        end
+        result = false
+        for(thread=1:numberOfThreads)
+             if(fetch(refs[thread]))
+                result=true
+            end
+        end
+
+        if (result)
+                #undo last cut
+                lowerBounds[i]=oldLower
+                keepGoing=false
+                h=randomPoints #break
+        else
+                keepGoing=true
+        end
+    end
+end
+
+function generatePoints(range,offset)
         #check n random points
         #if none are feasible then cut
-        for h= 1:randomPoints
+        for h= 1:(randomPoints)
             #for each random point you are making, generate a x,y,z,... value
             for j=1:numberOfVariable
                     point = (rand(randomNumberGenerator) * range) + offset
-                setValue(x[j],point)
+                    setValue(x[j],point)
             end
 
             if (allConstrinatsSatisfied())
-                  #undo last cut
-                  lowerBounds[i]=oldLower
-                  keepGoing=false
-                  h=randomPoints #break
+                 return true
             else
-                 keepGoing=true
+                 return false
             end
         end
-    end
 end
-
-function main()
-
-    startTime=time_ns()
-
-    include(modelName)
-
-    if(parrelism)
-        shrinkBounds()
-    else
-        shrinkBoundsNoParrelism()
-    end
-
-    endTime=time_ns()
-    duruation=endTime-startTime
-
-    #display shrunk bounds
-    for i=1:numberOfVariable
-        if(lowerBounds[i]>=upperBounds[i])
-            println("No feasible region for variable x[", i,"]")
-        else
-            print(lowerBounds[i]," <= x[", i,"] <= ")
-            println(upperBounds[i])
-        end
-    end
-
-    if(parrelism)
-        println("Time with parrelism: ", duruation, " miliseconds")
-    else
-        println("Time without parrelism: ", duruation, " miliseconds")
-    end
-end
-
-
-parrelism=true
 main()
