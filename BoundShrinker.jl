@@ -5,10 +5,11 @@ using JuMP
 
 #Global Variables
 #Constants
+
+numberOfThreads=2
 changeSize=0.1
-maximiumVariables=1000                  #How many variables the software can support
-modelName="model.jl"                    #The name of the model file.
-numberOfThreads=4
+maximiumVariables=1000                      #How many variables the software can support
+modelName="model.jl"                     #The name of the model file.
 randomPoints=3000/numberOfThreads
 
 function main()
@@ -38,8 +39,8 @@ m = Model()                                 #JuMP model
 @defVar(m,x[1:maximiumVariables])           #Varaible array must be declared ahead of time
 
 #make three lists of values for expressions, equality strings and right hand side values
-#expressions[i], equalityTypes[i] and rightHandSides[i] all together represent one constriant
-equalityTypes = String[]
+#expressions[i], equalityOrInequalities[i] and rightHandSides[i] all together represent one constraint
+equalityOrInequalities = String[]
 rightHandSides = Float64[]
 expressions=Any[]
 
@@ -50,49 +51,49 @@ upperBounds=Float64[]
 lowestPoint=Float64
 highestPoint=Float64
 
-#checks if a constriant is satisified
+#checks if a constraint is satisified
 #note that jump only supports <=, >= and =
-function constriantSatified(equalityType,rightHandSide,leftHandSide)
-    if (isequal(equalityType,"<="))
+function constraintSatified(equalityOrInequality,rightHandSide,leftHandSide)
+    if (isequal(equalityOrInequality,"<="))
             return (leftHandSide <= rightHandSide)
-    elseif (isequal(equalityType,">="))
+    elseif (isequal(equalityOrInequality,">="))
             return (leftHandSide >= rightHandSide)
-    #equality constriant is satisfied if the rightHandSide is between lowest and highest point
+    #equality constraint is satisfied if the rightHandSide is between lowest and highest point
     #lowest and hightest points are updated when random points are generated
-    elseif (isequal(equalityType,"="))
+    elseif (isequal(equalityOrInequality,"="))
             return ((rightHandSide >= lowestPoint) && (rightHandSide <= highestPoint))
     end
 end
 
-#checks if all the constrians are satisfied
-function allConstrinatsSatisfied()
+#checks if all the constraints are satisfied
+function allConstraintSatisfied()
     for j=1:numberOfVariable
-          leftHandSide = getValue(expressions[j])
+              leftHandSide = getValue(expressions[j])
 
-          if (leftHandSide<lowestPoint)
-                global lowestPoint=leftHandSide
-          end
-          if (leftHandSide>highestPoint)
-                global highestPoint=leftHandSide
-          end
-          value =  constriantSatified(equalityTypes[j],rightHandSides[j],leftHandSide)
-          if (!value)
-                 return false
-          end
-    end
-    return true
+              if (leftHandSide<lowestPoint)
+                    global lowestPoint=leftHandSide
+              end
+              if (leftHandSide>highestPoint)
+                    global highestPoint=leftHandSide
+              end
+              value =  constraintSatified(equalityOrInequalities[j],rightHandSides[j],leftHandSide)
+              if (!value)
+                     return false
+              end
+        end
+        return true
 end
 
 #note that jump only supports <=, >= and =
-function addConstraint(expression,equalityType,rightHandSide)
-        if (isequal(equalityType,"<="))
+function addConstraint(expression,equalityOrInequality,rightHandSide)
+        if (isequal(equalityOrInequality,"<="))
                 @addNLConstraint(m, expression <= rightHandSide)
-        elseif (isequal(equalityType,">="))
+        elseif (isequal(equalityOrInequality,">="))
                 @addNLConstraint(m, expression >= rightHandSide)
-        elseif (isequal(equalityType,"="))
+        elseif (isequal(equalityOrInequality,"="))
                 @addNLConstraint(m, expression == rightHandSide)
         end
-        push!(equalityTypes,equalityType)
+        push!(equalityOrInequalities,equalityOrInequality)
         push!(rightHandSides,rightHandSide)
         push!(expressions,expression)
 end
@@ -132,7 +133,6 @@ end
 #shrinks the upper bound of variable x[i]
 function shrinkUpperBond(i,zeroOffset)
     keepGoing=true
-    #upper bound
     while(keepGoing)
         oldUpper=upperBounds[i]
 
@@ -168,7 +168,6 @@ function shrinkUpperBond(i,zeroOffset)
                 result=true
             end
         end
-
         if (result)
                 #undo last cut
                 upperBounds[i]=oldUpper
@@ -180,10 +179,10 @@ function shrinkUpperBond(i,zeroOffset)
     end
 end
 
+
 #shrinks the lower bound of variable x[i]
 function shrinkLowerBound(i,zeroOffset)
     keepGoing=true
-    #upper bound
     while(keepGoing)
         oldLower=lowerBounds[i]
 
@@ -241,7 +240,7 @@ function generatePoints(range,offset)
                     setValue(x[j],point)
             end
 
-            if (allConstrinatsSatisfied())
+            if (allConstraintSatisfied())
                  return true
             else
                  return false
