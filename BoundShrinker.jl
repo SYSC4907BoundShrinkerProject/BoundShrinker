@@ -6,11 +6,10 @@ using JuMP
 #Global Variables
 #Constants
 
-numberOfThreads=2
 changeSize=0.1
 maximiumVariables=1000                      #How many variables the software can support
-modelName="model.jl"                     #The name of the model file.
-randomPoints=3000/numberOfThreads
+modelName="500model.jl"                     #The name of the model file.
+randomPoints=3000
 
 function main()
     startTime=time_ns()
@@ -29,7 +28,7 @@ function main()
         end
     end
 
-    println("Time with ",numberOfThreads," simultaneous executions: ", duruation/1000000000, " seconds")
+    println("Time: ", duruation/1000000000, " seconds")
 end
 
 
@@ -157,17 +156,8 @@ function shrinkUpperBond(i,zeroOffset)
         global lowestPoint=offset
         global highestPoint=upperBounds[i]
 
-        refs = Any[]
-        for(thread=1:numberOfThreads)
-            ref = @spawn generatePoints(range,offset)
-            push!(refs,ref)
-        end
-        result = false
-        for(thread=1:numberOfThreads)
-             if(fetch(refs[thread]))
-                result=true
-            end
-        end
+        result = generatePoints(range,offset)
+		
         if (result)
                 #undo last cut
                 upperBounds[i]=oldUpper
@@ -206,18 +196,8 @@ function shrinkLowerBound(i,zeroOffset)
 
         global lowestPoint=offset
         global highestPoint=upperBounds[i]
-
-        refs = Any[]
-        for(thread=1:numberOfThreads)
-            ref = @spawn generatePoints(range,offset)
-            push!(refs,ref)
-        end
-        result = false
-        for(thread=1:numberOfThreads)
-             if(fetch(refs[thread]))
-                result=true
-            end
-        end
+		
+		result = generatePoints(range,offset)
 
         if (result)
                 #undo last cut
