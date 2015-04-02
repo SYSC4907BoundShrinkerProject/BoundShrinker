@@ -37,7 +37,7 @@ function main()
     #display shrunk bounds
     for i=1:numberOfVariable
         if(lowerBounds[i]>=upperBounds[i])
-            println("No feasible region for variable x[", i,"]")
+            println("No bounds have been shrunk for variable x[", i,"]")
         else
             print(lowerBounds[i]," <= x[", i,"] <= ")
             println(upperBounds[i])
