@@ -8,12 +8,14 @@ using JuMP
 
 changeSize=0.1
 maximiumVariables=1000                      #How many variables the software can support
-modelName="500model.jl"                     #The name of the model file.
+modelName="model.jl"                     #The name of the model file.
 randomPoints=3000
 
 function main()
     startTime=time_ns()
-    include(modelName)
+    #include(modelName)
+	
+	include(modelName)
     shrinkBounds()
     endTime=time_ns()
     duruation=endTime-startTime
@@ -21,7 +23,7 @@ function main()
     #display shrunk bounds
     for i=1:numberOfVariable
         if(lowerBounds[i]>=upperBounds[i])
-            println("No feasible region for variable x[", i,"]")
+            println("No bounds have been shrunk for variable x[", i,"]")
         else
             print(lowerBounds[i]," <= x[", i,"] <= ")
             println(upperBounds[i])
