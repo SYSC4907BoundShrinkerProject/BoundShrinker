@@ -1,3 +1,8 @@
+# @author Preeti Nigam 100217175 
+# @version 2.0 dated 10 March 2015, modified 2 April 2015
+# 10,000 variables with 10,000 bounds and 10,000 constraints Linear Test Model in Julia using JuMP
+
+
 addBound(2815,6666)
 addBound(3721,7827)
 addBound(1824,6582)
