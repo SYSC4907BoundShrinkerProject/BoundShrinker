@@ -1,0 +1,2202 @@
+Bounds Shrinking Software Project
+By
+Andrew Venus 100829442
+Preeti Nigam 100217175
+Muhammad Siddiqui 100864181
+Supervisor: Professor John W. Chinneck
+A report submitted in partial fulfillment of the requirements
+of SYSC-4907 Engineering Project
+Department of Systems and Computer Engineering
+Faculty of Engineering
+Carleton University
+April 3, 2015
+2
+By
+Andrew Venus 100829442
+Preeti Nigam 100217175
+Muhammad Siddiqui 100864181
+Supervisor: Professor John W. Chinneck
+A report submitted in partial fulfillment of the requirements
+of SYSC-4907 Engineering Project
+Department of Systems and Computer Engineering
+Faculty of Engineering
+Carleton University
+April 3, 2015
+3
+Abstract
+The objective of the project was to create a robust program that took a non-linear optimization problem as input and returned shrunk bounds closely defining the feasible region(s) for the problem as output. Our team of three students in Systems, Software and Electrical Engineering investigated several languages and tools and created a bound shrinking program in Julia Language using JuMP. Two algorithms viz. Linear Range Cutting and Constraint Consensus were developed in Julia Language. Several model suites were developed and tests were conducted on linear and non linear models using 10,000 variables, 10,000 bounds and 10,000 constraints in Julia Language with good results. We were also able to introduce parallelism to some extent. Our plans for the future may include additional complex algorithms.
+4
+Acknowledgements
+We do not have words to thank our Supreme Father in Heaven for His love and support in all work we do. We are greatly indebted to Professor John W. Chinneck for conceiving the idea for this Project. We are extremely obliged for his time, support and explanation he provided during all our weekly meetings with him. He has guided us throughout the Project, inspiring us, our ideas and efforts. We also thank Professor Samuel Ajila for providing us valuable tips during our presentation and poster fair. We would also like to thank the Technical Staff in ME 4244 for their support. We are obliged to Jerry Buburuz for making a remote connection available to us for downloading and running the Julia program.
+5
+Contents
+1.0 Introduction ...................................................................................................... 9
+1.1 Problem Background ........................................................................................ 9
+1.2 Problem Motivation ........................................................................................ 10
+1.3 Problem Statement .......................................................................................... 11
+1.4 Proposed Solution ........................................................................................... 11
+1.5 Overview of Remainder of Report ................................................................. 12
+2.0 The Engineering Project ................................................................................. 15
+2.1 Health and Safety ............................................................................................ 15
+2.2 Engineering Professionalism .......................................................................... 15
+2.3 Project Management ....................................................................................... 17
+2.3.1 Gantt Chart .............................................................................................. 17
+2.3.1 Project Resources .................................................................................... 20
+2.3.2 Project Lifecycle ..................................................................................... 22
+2.4 Individual Contributions ................................................................................. 27
+2.4.1 Project Contributions............................................................................... 28
+2.4.2 Report Contributions ............................................................................... 30
+3.0 Algorithms for Bound Shrinking .................................................................... 32
+3.1 Range Cutting ................................................................................................. 32
+3.2 Constraint Consensus Methods ...................................................................... 33
+4.0 Software Design ............................................................................................ 39
+4.1 Choice of Concurrent Programming Language .............................................. 39
+4.2 Modelling Language: JuMP ........................................................................... 44
+4.3 Software Structure .......................................................................................... 45
+4.4 Software Testing ............................................................................................. 47
+5.0 Experiments .................................................................................................... 49
+5.1 Test Models .................................................................................................... 49
+5.1.1 Unit Testing in Julia ................................................................................ 49
+5.1.2 Testing in Matlab .................................................................................... 49 5.1.3 Testing the Boundary Cases .................................................................... 49 5.1.4 Testing for Parallelism and Core Performance ....................................... 50
+6
+5.2 Results and Discussion ................................................................................... 55
+5.2.1 Unit Testing in Julia ................................................................................ 55
+5.2.2 Testing in Matlab .................................................................................... 55 5.2.3 Testing the Boundary Cases .................................................................... 56 5.2.4 Testing for Parallelism and Core Performance ....................................... 59
+6.0 Conclusions and Recommendations ............................................................... 61
+7.0 References ...................................................................................................... 63
+8.0 Supporting Appendices................................................................................... 64 Appendix A ............................................................................................................. 64 Appendix B ............................................................................................................. 65 5.1.1 Testing- Unit Testing in Julia .................................................................. 74
+Appendix D ............................................................................................................. 76 5.1.2 Initial Testing with Matlab ...................................................................... 76
+Appendix E .............................................................................................................. 81
+5.1.3 Testing Boundary Cases and Parallelism ................................................... 81
+7
+List of Figures
+Fig 1: Feasible regions with the given constraints and bounds
+Fig 2: Condensed Gantt Chart
+Fig 3: PERT Network Chart
+Fig 4: Important Elements of Project Fig 5: Royce's original waterfall model
+Fig 6: Actual Flow of our Project
+Fig 7 An example of constraint consensus iteration [2]
+Fig 8: The Constraint Consensus Algorithm [2]
+Fig 9: Procmon Application showing thread activity
+Fig 10: Thread activity with one processor
+Fig 11: Thread activity with two processors
+Fig 12: Thread activity with three processors
+Fig 13: Thread activity with four processors
+Fig 14: Non-Linear Model with 10,000 bounds and 10,000 constraints Test Result Summary
+Fig 15: Comparison of Core Performance of 3 models
+8
+List of Tables
+Table 1: Predecessor Chart
+Table 2: Results of All including Boundary Cases Testing
+Table 3: Results of Comparison Testing for Number of Variables Performance
+Table 4: Results of Comparison Testing for Linearity and Non-Linearity Performance
+Table 5: Calculation of Speedups and Efficiencies
+9
+1.0 Introduction
+1.1 Problem Background
+The meaning of optimization is finding the best solution from all feasible solutions. Optimization problems have a set variables bounds, set of functions and a set of constraints. The feasible region of the problem is the area with all the constraints and variable bounds that are satisfied. It is usually not known in advance whether a nonlinear set of constraints has zero, one, or multiple feasible regions. Further, if one or more feasible regions exist, their locations are usually unknown [1]. The feasible region is enclosed in a box formed by the problems variable bounds.
+Suppose we have 3 constraints and 2 bounds each for x and y axes Constraints y <= sin(x); y <= tanh(x); y <= cos(x); Bounds -pi<=x<=pi -5pi<=y<=5pi
+10
+Fig 1: Feasible regions with the given constraints and bounds
+The feasible region is shown in green. Usually the box formed by the variable bounds is much larger than the feasible region inside it.
+1.2 Problem Motivation
+When working with optimization problems we have a set of variable bounds and a set of constraints. The set of constraints creates one or more feasible regions. The variable bounds create a box around the feasible regions. Usually the box formed by the variable bounds is much larger then the feasible regions inside it. This can make certain analysis algorithms and heuristics such as the random sampling used by MProbe much slower and less efficient. This is because there is a large area that has to be sampled. Our project attempts to shrink the size of the box formed by the variable bounds, helping with this
+11
+problem. The initial optimization problem can involve linear or nonlinear constraints. While our bound shrinking software can handle both cases it is much more useful for use with non-linear problems. That is because it is usually trivial to identify the feasible regions of a linear problem and reduce the variable bounds to a close outer approximation.
+1.3 Problem Statement
+Optimization problem has bounds that cover an area significantly larger than the feasible region. The problem at hand is having bounds a lot further than the feasible region instead of enclosing the feasible region by closely tightening the bounds around it. In addition, a solution lies often in the feasible region or it contains multiple solutions with each satisfying all constraints more than the other. However, to find the solution one must first find the feasible region. The software takes the feasible region or regions and encloses it with variable bounds the forms a box around it.
+1.4 Proposed Solution
+Our solution was to create software that takes an optimization problem as input and returns the reduced variable bounds as output. The software reads the optimization problem in from a text file, uses a linear range cutting algorithm to calculate a close outer approximation of the feasible regions. The software displays the new reduced variable bounds on the console.
+12
+1.5 Overview of Remainder of Report
+This report is on the Bounds Shrinking Software Project. The introductory Chapter One mentions the problem, the background and the proposed solution to the problem. This is preparing the reader to understand the problem in depth and offering some solution to that problem.
+Chapter Two is related to the Engineering Project and addresses the issues of Health and Safety, Engineering Professionalism and Project Management. This chapter is mandatory for engineering students as they are required to exhibit responsible and professional behaviour, which not only has to meet legal requirements but safety requirement as well. Project Management involves Gantt chart, a Predecessor Chart and PERT Network Chart, Project Lifecycle and Resources etc. and is important to monitor project progress and other details of the project.
+Furthermore, this chapter also includes the individual project as well as report contributions. This was done to ensure that there is fair distribution of workload and responsibilities among all team members. This is also a quick judgement of inclination of interests and skills of an individual.
+Chapter Three is Technical and discusses the algorithms that are used in the project. Methods like range cutting and constraint consensus are discussed in detail. This chapter was significant to explain the actual algorithms in detail about how they were going to meet our objective of finding a feasible region.
+13
+Chapter Four is devoted to the Software Design. At first it deliberates on reasons for choosing JuMP, which is the language used in our Project. Then it mentions in detail the code snippets used in Julia using JuMP. It explains the bounds and constraints and the cutting of feasible region further and further till the desired region is obtained.
+This chapter also discusses in depth testing the software, starting with pseudocode development, then writing the actual software, the amendments made and the introduction of parallelism. It provides reasons in detail why the specific test model suites were chosen etc. and how concurrency was achieved and measured.
+Chapter Five presents all experiments and tests conducted on the software using the algorithms. The results of the tests are exhibited along with the discussion. This is important as this the actual data which is collected during the actual run of the tests, despite of ideal behaviour listed in the theory. This is a true test whether the project is feasible under the given operating environment or not.
+Chapter Six concludes the report with final remarks and recommendations. This is necessary to gain an insight into the final outcome of the project and to determine if it was successful or not. It also provides an opportunity to investigate further any opportunities that may lie in future expansion of this project and the commercial usage of such an endeavor.
+14
+Chapter Seven details all the references used in this project including all journal articles, website references and programming language website references.
+Chapter Eight ends with all the supporting documentation that was used in this project.
+15
+2.0 The Engineering Project
+2.1 Health and Safety
+Health and safety is important to all forms of engineering work. This Bound Shrinker Software project is completely computer simulation based. As such the only possible safety concerns are related to the hardware of the computer system the user is using. This computer system hardware's safety is already ensured by the computer retailer. As such there are no real safety concerns for this project.
+2.2 Engineering Professionalism
+Although team members, part of the software development team do not have an engineering license, but it is a good assessment for displaying professionalism. This is a learning project with currently no commercial usage. The criteria that will be used to judge the level of professionalism involves communication, duty to the customer- in this case our supervisor, ethics related to honest practice and acknowledging the work of others, and attributes such as how well the software functions with the given constraints.
+Communication in this project is written in the form of reports as well as the algorithms or a code snippet. Our code follows software development guidelines to make it easier for other developers to understand our work. For instance, giving variable names that define their purpose, commenting on each line to describe what is happening, and following a certain structure etc. These written reports are properly reviewed by the Supervisor.
+16
+Ethics in practice involves acknowledging others work if it’s not one’s own work. Journal articles, mainly those of the professor, on constraint consensus method to determine feasibility, are properly cited in our reports.
+Last but not the least, our product/software should do what it was originally designed to do. So, our software currently shrinks the bounds around the feasible region, but with limitations.
+17
+2.3 Project Management
+This section consists of a Gantt Chart, a Predecessor Chart and PERT Network Chart.
+2.3.1 Gantt Chart
+Fig 2: Condensed Gantt Chart
+The Gantt Chart is a bar chart which lists the Project Schedule with start and finish times. It is important to visually observe the tasks at hand and divide the team effort
+08/Sep/14
+08/Oct/14
+07/Nov/14
+07/Dec/14
+06/Jan/15
+05/Feb/15
+07/Mar/15
+06/Apr/15
+Proposal Written
+Github Repository Created
+Language and Tools Chosen
+Pseudocode written
+Test Plan Created
+Test Suite Creation
+Progress Report
+Oral Presentation Availability Form
+Software works with Parallelism
+Software passes Unit Tests
+Software Passes Integration Testing
+Oral Presentation
+Poster Fair
+Open Source project Setup
+Product operational
+Constraint Consensus Algorithm Tested
+User Manual
+Final Report
+Linear Range Cutting Implemented
+18
+emphasizing the timing constraint. We used this throughout our Project to distribute the work among us and determine our next deadline.
+Activity
+Predecessor
+Milestone
+A
+Proposal Written
+B
+A
+Github Repository Created
+C
+A
+Language and Tools Chosen
+D
+C
+Pseudocode written
+E
+C
+Test Plan Created
+F
+E
+Test Suite Creation
+G
+A
+Progress Report
+H
+G
+Oral Presentation Availability Form
+I
+D
+Software works with Parallelism
+J
+F
+Software passes Unit Tests
+K
+J
+Software Passes Integration Testing
+L
+H
+Oral Presentation
+M
+K
+Poster Fair
+N
+D
+Open Source project Setup
+O
+K
+Product operational
+P
+D
+Constraint Consensus Algorithm Tested
+Q
+O
+User Manual
+R
+K
+Final Report
+S
+D
+Linear Range Cutting Implemented
+Table 1: Predecessor Chart
+The Predecessor Chart was valuable in deciphering the dependencies of tasks and in creating the PERT Chart.
+19
+Fig 3: PERT Chart
+PERT Chart is valuable in visualizing all the tasks (listed as alphabets) in one glance along with the activities preceding it and the time needed to finish each task (given at the top of each task) as well to determine the minimum time in which the whole project would be completed.
+As seen from Fig 3, Our Project shows the Critical Path which is A-C-D-I = 2+15+6+112 = 135. So the minimum time to finish our Project was 135 days.
+20
+2.3.1 Project Resources
+Team:
+The Team consisted of three students from three backgrounds- Preeti Nigam from Computer Systems Engineering, Andrew Venus from Software Engineering and Muhammad Siddiqui from Electrical Engineering. So, different visions could be combined to come up with different view of the algorithms.
+Fig 4: Important Elements of Project
+The Project Scope was initially limited to finding feasible region between several functions of an algorithm. However, as the Project progressed another algorithm was introduced with similar expectations. Due to limitations of Julia Studio, for instance not going over degree 2 of polynomial, not running with trigonometric functions and logarithmic functions, the scope was narrowed to a large extent. The same result however could be visualised using Matlab.
+Project
+Project Time
+Project Scope
+Project Cost
+21
+The Project Time was from September 2014 to April 2015. A lot of time was spent in 2014 discussing how to build the algorithm and test it.
+The Project Cost was nil. In February 2015, a remote connection was requested from the Technical department for which there was absolutely no cost. Julia Studio program was free to download from the net.
+Project Meetings- The team had regular weekly meetings with the Professor and weekly progress of each team member was documented. Weekly progress reports were compiled rotation wise by all three team members and emailed to the Professor.
+Project Responsibilities-
+ Andrew was Team Leader. He was largely responsible for designing and implementing the bound shrinking software
+ Preeti was Documentation In-charge. She was largely responsible for developing test suites and linear and non-linear models and testing at various levels.
+ Muhammad was largely responsible for investigating algorithms to find feasible region, constraint consensus being the major one
+22
+2.3.2 Project Lifecycle
+Fig 5: Royce's original waterfall model (source: http://en.wikipedia.org/wiki/Waterfall_model, redrawn by Preeti)
+Our Project more or less followed a Traditional approach. These are explained below-
+Requirements Specification
+Software Architecture
+Coding
+Integration
+Testing and Debugging
+Installation
+Maintenance
+23
+2.3.2.1 Requirements Specification
+For Requirements Specifications, in the Fall of 2014, we discussed with the Professor and according to our objectives, we investigated several languages and tools and finally decided to use Julia and JuMP. We also explored several algorithms for meeting our objective of finding a feasible region by shrinking bounds and constraints.
+1. Functional Requirements
+1Functional requirements detail the interactions between the system and its environment, which includes the user plus any other external system.
+The functional requirements are listed as-
+1. The program is able to take bounds and constraints as inputs.
+2. The program is able to reduce the bounds from all sides
+2. Non-Functional Requirements
+2Non-functional requirements detail the non-functional requirements aspects of the system that apply to many different aspects of the system, from usability to performance.
+1 Object-Oriented Software Engineering Using UML, Patterns, and Java™Third Edition (Bruegge & Dutoit)
+2 Object-Oriented Software Engineering Using UML, Patterns, and Java™Third Edition (Bruegge & Dutoit)
+24
+i. Quality Requirements
+a. Usability Requirement
+ The Bounds Shrinking Software is aimed to be made user friendly. However, this would only be done as an extra feature in the end, provided there is enough time left.
+b. Reliability Requirement
+ No software fault should occur
+ The system should not crash
+c. Performance Requirement
+ The Bounds Shrinking Software is user friendly
+ The Bounds Shrinking Software should be able to take hundreds of functions as input from a file.
+ The Bounds Shrinking Software should be able to output the results on the console or to an output file, in case the output is too large.
+d. Supportability Requirement
+ The Bounds Shrinking Software is built in Julia Studio and Forio Labs no longer supports Julia Studio. But this does not affect us much since there are other IDEs for Julia available and we do not require an IDE to run or develop code.
+25
+Access Control
+The access control to our project is any user whom our Supervisor deems fit.
+The data in the system is not encrypted. All the test data is posted on Git Hub.
+2.3.2.2 Coding
+User concerns  The user is supposed to input the bounds and constraints or they are read from an input file. The bounds are shrunk based on the input provided.  The user can access the data very fast. In fact there has been a comparison made by running the software on parallel cores and the time is displayed.  The shrunk bounds can be easily displayed.  Only the bounds and constraints have to be provided by the user. These can be typed into a file using Julia syntax.
+Designer concerns  There are 255 lines of program code it will take to shrink the bounds.  We could cut down on CPU time when we run the system using parallelism via different threads. Details of the code used are given in a separate section under Technical Section.
+26
+2.3.2.3 Integration
+Two algorithms have been developed so far. The integration section was meant for developing several modules and later integrating them. However, in our case this differed as when one team member was writing the code, another was developing test suites and yet another was still exploring other algorithms. These three tasks were being done in parallel. Fig 6 below explains how our model actually flowed.
+Fig 6: Actual Flow of our Project
+Investigation of Different algorithms
+Software Development
+•Andrew
+Coding
+•Preeti
+Testing
+•Muhammad
+Investigation of other algorithms
+Installation
+Maintenance
+27
+2.3.2.4 Testing and Debugging
+Testing section started earlier with matlab testing. However, later on when the code was ready, different test suites were developed and tested. In winter 2015, more complex and huge repositories in linear and non linear models were created and tests were performed on them.
+2.3.2.5 Installation
+Installation is not on any one machine. A remote desktop connection was sought from the technical IT department and as such these tests could be performed on any machine outside or on campus.
+2.3.2.6 Maintenance
+Since our application is small with a limited scope, maintenance activities are performed as and when necessary. Maintenance was done by way of posting all the code, results and test models on Git Hub and maintaing different versions of the code online.
+2.4 Individual Contributions
+We divided our responsibilities according to the areas we were best skilled at, keeping in mind the fair share of responsibilities.
+28
+2.4.1 Project Contributions
+Andrew
+My main contributions during the project were designing and implementing the bound shrinking software. I investigated the linear range cutting algorithm for bound shrinking and decided to implement it based on its simplicity compared to other algorithms. I developed the structure of the application and implemented the general framework of the software. I implemented a linear range cutting algorithm as the first algorithm the software could use. I developed the format that the model files use. I investigated several options for what programing languages and what modeling languages to use and made the decision to use Julia and JuMP. I also set up a version control system for use in this project. I created a Git repository on GitHub and made it accessible to all group members. I added the bound shrinker software's source code as well as different model files to this repository so that other group members could access it.
+Preeti
+I started by writing the intital pseudocode. Then as Andrew was developing software, in parallel I created model test suites in Julia but to visualize them I converted them into Matlab code and plotted the feasible regions. Then when the initial code was ready I tested various unit tests in Julia. I created several boundary tests in Julia language and ran them successfully. Then, I created two Big data models one non-linear and one linear of 10,000 variables with 10,000 bounds and 10,000 constraints and ran them also
+29
+successfully. Since the files were huge I attached them as separate text files along with this report. I also performed tests for parallelism and core performance. Those are also on the non linear and linear models in the attached text files.
+Besides testing I am also responsible for all reports and documentation. I have created reports, compiled all team members portions and performed editing. I looked after the administrative functions. I have posted all test models and reports on Github as well for easy viewing by all team members.
+Muhammad
+I brainstormed and came up with an idea of a different way to meet our objective and find a feasible region. I developed code for a different algorithm that finds a feasible region. This algorithm option could be further developed in the future. I have also posted my code on Github for other team members to view.
+30
+2.4.2 Report Contributions
+Abstract (Preeti)
+Acknowledgements (Preeti)
+1.0 Introduction 8
+1.1 Problem Background (Preeti) 9
+1.2 Problem Motivation (Andrew) 10
+1.3 Problem Statement (Muhammad) 11
+1.4 Proposed Solution (Andrew) 11
+1.5 Overview of Remainder of Report (Preeti) 12
+2.0 The Engineering Project 15
+2.1 Health and Safety (Andrew) 15
+2.2 Engineering Professionalism (Muhammad) 15
+2.3 Project Management (Preeti) 17
+2.3.1 Gantt Chart 17
+2.3.1 Project Resources 20
+2.3.2 Project Lifecycle 22
+2.4 Individual Contributions 27
+2.4.1 Project Contributions (All) 28
+2.4.2 Report Contributions (All) 30
+3.0 Algorithms for Bound Shrinking 32
+3.1 Range Cutting (Andrew) 32
+3.2 Constraint Consensus Methods (Muhammad) 33
+4.0 Software Design 39
+4.2 Modelling Language: JuMP (Muhammad) 44
+4.3 Software Structure (Andrew) 45
+4.4 Software Testing (Preeti) 47
+5.0 Experiments (Preeti) 49
+5.1 Test Models 49
+5.1.1 Unit Testing in Julia 49
+5.1.2 Testing in Matlab 49 5.1.3 Testing the Boundary Cases 49 5.1.4 Testing for Parallelism and Core Performance 50
+5.2 Results and Discussion (Preeti) 55
+5.2.1 Unit Testing in Julia
+5.2.2 Testing in Matlab 55 5.2.3 Testing the Boundary Cases 56 5.2.4 Testing for Parallelism and Core Performance 57
+31
+6.0 Conclusions and Recommendations (Andrew) 61
+Poster printing (Andrew)
+Report creation, modifications and compilation (Preeti)
+Printing and Binding (All)
+32
+3.0 Algorithms for Bound Shrinking
+3.1 Range Cutting
+The are several possible algorithms that can be used to reduce the variable bounds of an optimization problem. One of the algorithms we are using is called linear range cutting. It works by trying to reduce a variable bound by some amount, then creating many random point to determine if reducing the variable bound in that way would exclude any of the feasible region. We temporarily change the bound by either increasing or decreasing it then generate a certain number of random points within the region between the old bound and the new temporary bound. While generating random points the software keeps track of the greatest and lowest points generated in each set of random variables. These values are used to evaluate if equality constraints are satisfied. Since random points will never be exactly on the equality constraints instead we see if points above and below have been generated. If they have then the equality constraint is satisfied some where in between the highest and the lowest point. If any of the random points satisfies all the inequality constraints and all the equality constraints are between the highest and lowest points then the current region has some feasible area in it. This means you can not make the cut. The temporary change to the bound is reversed. The algorithm then either reduces the amount it reduces variable bounds by or it stops working on that variable bound if the amount was already the smallest the algorithm uses. If the number of random points are generated without finding any points that satisfies all the constraints then the changed bound is made permanent and the bound is changed again, repeating this process. This entire process is then repeated for both the upper and lower bound of each variable, increasing
+33
+the lower bound so that the area bound is reduced and deceasing the upper bound so that the area bound is reduced. After both the upper and lower bounds of a variable have reached a stopping point then the process is repeated for the upper and lower bound of the next variable. This is repeated until all variables bounds have been reduced and reached a stopping point. Our software follows this general algorithm with a few minor differences. First the upper and lower bounds are reduced or increased by a percentage instead of a fixed amount. This was done to improve how close we could reduce the bounds to for very small variable bounds. The algorithm can not reduce to closer than one increase or decrease step of the feasible region. With a fixed step size that one step could be very large compared to the feasible region. With a percentage of the current reduced bound the step is always small compared to the current reduced bounds, this one step off in always small. Another change we made was to introduce parallelism in the random point generation. Multiple threads of execution generate random points at the same time and they all stop if a feasible point is found. This speeds up the random point generation.
+3.2 Constraint Consensus Methods
+Constraint Consensus is another way to shrink bounds. It is different from the method of range cutting. It is done by first finding a feasible point that can be used to begin extending the bounds outwards. That feasible point would be somewhere within or at the boundaries of feasible region. The constraint consensus algorithm will take any arbitrary initial point and move to or near a feasible region. The reason for doing so is to allow for moving quickly form the initial point, which is often very far from the feasible region, to
+34
+a final point that is approximately feasible for a set of nonlinear constraints [2]. This method only applies for a point that does not satisfy a constraint because the point would be feasible for the constraints that are satisfied.
+This is done by first computing one or more feasibility vectors to construct a projection algorithm which will move the point’s position closer to the feasible region. To begin with, feasibility vector for an individual constraint is the vector extending from an initial random point to its orthogonal projection on the constraint [2]. In addition, feasibility vector will be the exact feasibility vector for a linear constraint, and estimated feasibility vector for a nonlinear constraint. It is determined using this formula: νd *(c/ǁcǁ2) [2].
+* ν is a constraint violation [2]
+* c represents a constraint
+* d is a direction parameter, which be +1 if it is necessary to increase LHS to satisfy the constraint or -1 to decrease the LHS to satisfy the constraint [2]
+We also need to find the feasibility distance, which is obtained from the feasibility. Feasibility distance is exact for the linear constraints and it is an estimated distance for nonlinear constraint as the non-linear constaraint will have an estimated feasibility vector. It is calculated finding the magnitude of the feasibility vector of a constraint.
+A simple example of constraint consensus method is shown in fig 7. There are two constraints A(x): X2 ≤ 5 and B(x): X12 + X2 ≤ 10. The initial infeasible point is selected randomly at (2.5, 8), which does not satisfy any of the two constraints. The feasibility
+35
+vectors for each constraint is shown as dashed arrows are [0 −3] for A(x) with a feasibility distance of 3, and [−0 817 −0 163] for B(x) with a feasibility distance of 0.833 determined by finding a magnitude of both elements in the feasibility vector of B(x). We then find the mean by adding components of feasibility vectors for both variables to get the consensus vector, which is shown as bold solid arrow [−0 817 −1 582]. The initial point is now updated to the new location satisfying the constraint B(x). This iteration continues until all constraints are satisfied.
+Fig 7 An example of a constraint consensus iteration [2]
+Algorithm Implementation
+Begin the implementation by first writing the pseudo code, and one can see the summarized version of that code in fig 8. An important thing to consider here is that the user will provide with the constraints and the bounds in the jump modeling language. An easy way to implement constraint consensus is to start with a polynomial function. We will hardcode the polynomial in our algorithm and worry about integrating functions from the modeling language into the algorithm later.
+36
+Fig 8: The Constraint Consensus Algorithm [2]
+For constraint consensus method, the inputs we need are a set of constraints, an initial point generated randomly. We began with just one constraint (a polynomial) and make a 2-d array, which will have a column for coefficients, column for variables, and a column for corresponding powers to those variables.
+In this case having less familiarity with Julia language, we first wrote the code in c language. Significant part of the code involves calculating the feasibility vector. This is because there will be functions that perform calculation on either individual parts or the feasibility vector formula. There is a function in our code that computes the gradient of the constraint, another function for checking constraint violation, another function for to find the magnitude of the gradient of the constraint, and a final function that computes the feasibility vector by taking all the individual parts that were calculated in the previous
+37
+functions. The feasibility vector will be in the form of an array, which represent all the variables.
+After implementing all functions, generate any random point in the variable space. That random point would also be in form of an array depending on the number of variables there are. Check to see if the point satisfies the constraint by substituting each component of the point into the LHS of the constraint equation. The value obtained in the LHS can satisfy the constraint three different ways depending on the equality type of the constraint and how it compares with the RHS.
+Challenges faced during the development of this algorithm and are yet to be resolved
+1. Gradient
+It is very easy to find the gradient of the polynomial because you only have to differentiate each variable once by itself. Variables are not repeated or multiplied with one another and follow a sequential order. This makes it easier to implement. However, it is very difficult to write one piece of code that can find the gradient for any type of equation including a polynomial. However the constraint consensus algorithm in this project only works with polynomials. On the other hand, it is possible to implement an algorithm that can take any form of equation and output its’ gradient. This is done by parsing the equation in infix notation to make it easier for the computer to evaluate.
+38
+2. Taking constraints from jump
+There is a specific method that is used to read constraints set in the modeling language and use those constraints to find the feasible point. However, the constraint consensus algorithm in its current form is not able to take those models as range cutting does. This is because the code was written in c, and later converted to Julia. Due to difference in programing languages, and less familiarity with Julia language this is subject requires further development.
+39
+4.0 Software Design
+4.1 Choice of Concurrent Programming Language
+Language and Tool Choice
+This project required us to have models with bounds we would like to shrink represented in some kind of modelling language. The modeling language defines the objective function, the bounds and the constraints. It is important to note that we are not looking for a solution to the objective function; instead we are trying to enclose a feasible region. In addition, the constraints are non-linear which creates a challenge for the software to be able to shrink bounds around the feasible region. The project also has the code itself written in some sort of programming language. It is important that the programming language can communicate and work with the modeling language. We have investigated several options to use as our model language and our main programing language. In order for a programing language to be useful in our project it should satisfy as many of the following criteria as possible:
+1. Supports parallelism for evaluating constraints.
+2. Allows for algorithms that deal with equality constraints.
+3. Be able to easily work with any modeling language.
+Parallelism Options
+There are multiple possible options for introducing parallelism into the current bound shrinking software. The first option is to generate multiple random points inside a candidate area you are checking at the same time. Multiple threads of control would each
+40
+be working in the same area and creating random point within the same range of possible random values. Each thread of control would also check the feasibility of the points it created. Each thread of control would have its own copy of the JuMP model so that each model can be set to different current values at the same time with out interfering with each other. The JuMP models would be used to check feasibility of points. Each thread of control will have its own count of how many random points to generate if none of the points are feasible. The number of random points to generate decreases with the number of threads of control we have. Each thread of control would need to have its own random number generator with different seeds in each so that multiple random numbers can be generated at the same time and so that all the treads of control doesn't create the same sequence of numbers. There would be a main thread of control and each of the worker threads would be able to signal either that a feasible point has been found or that they have reached the limit of generated points. The first time the main thread is signalled that a feasible point has been found, the main thread stops all the worker threads and moves on to the next part of the algorithm. When the main thread is signalled that a thread has reached its limit of random points to generate it increases a counter. When this counter reaches the number of worker threads there are then the software moves on to the next area, repeating the process. Each thread would also need their own memory structure used to evaluated equality constraints.
+The second option is to reduce the bounds in several directions at the same time. We have a main thread and two worker threads for each variable. For each variable one thread reduces the upper bound of that variable and one thread reduces the lower bound of that variable. Each worker thread would need its own random number generator, copy
+41
+of the JuMP model, and counter for the number of random points generated so far. Each thread could use the same random number generator seed and number of points to generate. The worker threads would have to be able to signal they are done and give the result of the reduced bound upper or lower bound.
+A third choice would be to combine the two, essentially making each worker thread from option two also a main thread for option one. We have multiple thread generating random points for each upper and lower bound for each variable.
+A fourth choice is to have two threads of control. One thread reduces the upper bounds of each variable one variable at a time while another thread reduces the lower bounds one variable at a time. The two threads would be somewhat synchronized so that both are working on the same variable at the same time. This would prevent corners from not being checked as could happen with multiple variables at a time. This option would otherwise be similar to option two. Note that this option could also be combined with option one to speed it up further.
+A fith option is to have multiple threads generating random points at the same time and then checking the feasibility of the points on the main thread once they are generated. The range cutting algorithm requires a random point for each of the variables x[1], x[2], … , x[n]. Get each of our worker threads to generate (n/(the number of variables)) point and have our main thread generate ((n/(the number of variables))+(n%(the number of variables)) points. Then each worker thread returns the random points it generated which are combined with the main threads points to test the feasiablity. Each work thread has a copy of the method makePoints(range,offset,numberOfPoints), which generates and
+42
+returns a list of random points. The main thread has the full model and is unchanged from non pararrel opitions.
+Our software implements option five since it can supports any number of threads or procesors. This makes it easier to take advantage of the hardware resources we have available.
+C and AMPL
+C using the AMPL (http://ampl.com/) as a modeling language was investigated but the mechanism for
+linking the AMPL models to the C code was deemed too complex to be practical. Although C is powerful programing language without an easy way to interface a modelling language with it C is not a practical choice.
+Java and Optimax
+Java using the Optimax (http://www.maximalsoftware.com/optimax/) modeling language was also investigated. This combination has promise and getting the link between Java and Optimax is easy to accomplish from within eclipse (https://eclipse.org/users/). Java has an advantage of supporting many object oriented concepts that make code reuse easier. Java also has the advantage of having many mature IDEs such as eclipse that make development easier. Optimax has a single Optimax object with many methods that can be used to create and modify models and constraints. One concern however is the required license for Optimax. To use Optimax we must submit a request form for a license for each person who wants to use to get a limited time student
+43
+license several business days later. The license also means that the open source project can not include the modeling language and that each person that wants to use our project would have to request a student license of Optimax to use it.
+Julia and JuMP
+The Julia (http://julialang.org/) programming language using it built in JuMP (http://jump.readthedocs.org/en/latest/) library was also investigated as a possible option. JuMP is a library built into Julia that acts as a modeling language, allowing models objects to be created and constraints to be added or manipulated. JuMP has the advantage of being very easy to use with Julia, we only have to download JuMP then start using JuMP commands. Julia also has several advantages. First, we can easily use Julia from either an IDE like Julia Studio or a console making it easy to make code or experiment with commands. Second, Julia was design for parallelism and it should be easier and more efficient to get our bond shrinking algorithms working in Julia than it would be in another language. Julia is also free and open source making easy to start working with.
+MATLAB and Various Modelling Languages
+MATLAB is one possible choice for the programing language the main code is to be written in. MATLAB would be used with separate modeling language. MATLAB comes with a parallel computing toolbox, and can be used to write algorithms tightening bounds for linear constraints. MATLAB is a good possible choice.
+44
+Final Decision
+Comparing the different options available, the best choice is to use the Julia programing language using the JuMP library as the modeling language. This is because of several key factors. For one JuMP is very easy to interface with Julia. Julia also has good support for parallelism. Java is another appealing choice but the required licenses to get and use Optimax makes it less appealing. MATLAB is promising as a programing language but cannot interact with modeling languages as well as Julia and JuMP.
+4.2 Modelling Language: JuMP
+Jump is an abbreviation for “Julia for Mathematical Programing”, which is a domain specific modeling language that comes with Juno/Julia package. The purpose of using jump is for the user to set constraints and their variable bounds in a separate window. Jump allows the user to write mathematical expression in their natural form. Developers of the project can go ahead and write algorithms that find the feasible region and shrink the bounds rather than focusing on writing code to read those expressions as well.
+Jump supports a number of solvers for a variety of problem classes such as; linear, mixed-integer programming, second-order conic programing, and nonlinear programing. An example of jump model is shown below:
+addBound (0, 1000)
+addBound (0, 13000)
+addConstraint (x[1], “<=”, 4)
+addConstraint (x[2]^2, “=”, 3)
+45
+This is a simple model shown along with jump syntax for setting variable bounds, and constraints. There is no limit to the number of variables and constraints in jump. For instance, using 500 variables and as many constraints would extend above example to number of pages, so there is no point of showing that example here. However, it demonstrates the capability of JuMP.
+On the other hand, there are limitations on what can be accomplished with jump. The user cannot set the bound to infinity as it causes errors.
+4.3 Software Structure
+The first component of the bound shrinker software is the model file. The model file is a series of addBound() and addConstraint() method calls in a separate text file named “model.jl” and saved in the same folder as the bound shrinker software. The method addBound() takes two decimals as parameters and represents a variable bound. The order of the addBound() calls determines the variable it refers to, the first call sets the bounds for x[1], the second call for x[2] and so on. The method addConstraint()
+takes an expression, a string of an inequality or equality and a decimal. The expression is composed of variables defined by the bounds such as x[1] and x[2] for example x[1]*x[2]+4. The string is one of the strings “<=”, “>=” or “=”. The decimal is the right hand side of the expression. All together it gives us an inequality or equality constraint for example x[1]*x[2]+4<=9.5. The bound shrinker software calls the methods listed in the text file during setup. Reading the text file creates a JuMP model in the software as
+46
+well as several other variables. After reading the text file the software knows about the variable bounds and the constraints of the optimization problem. The variables used in the model and by the software are of the form x[1], x[2], x[3] and so on instead of using arbitrary names such as x,y and z. After reading the text file the software also sets up the program's model of the optimization problem. While JuMP does let us evaluate constraints when we set variable to certain values, it does not allow us to access the constraints, variables and bounds we set. As such the bounds and constraints are stored in a way that is easy for the rest of the software to use. Three arrays equalityOrInequalities[], rightHandSides[] and expressions[] together represent the constraints, with the same index in each representing the same constraint. The arrays lowerBound[] and upperBound[] along with the array x[] from the jump model represent the bounds. lowerBound[i] is the lower bound of x[i], and upperBound[i] is the upper bound of x[i]. Values are added to the arrays to represent the bounds and constraints. Next the software has subroutines to check if an individual constraint is satisfied and to check if all the constraints are satisfied. These methods require that the JuMP variables have values set before being used. The subroutine that checks if all constraints are satisfied returns true and false. Lastly there is the actual bound shrinking algorithm. The algorithm we are using is nonlinear range cutting. This algorithm is based off the one used by MProbe [3]. This algorithm iterates through the upper and lower bound for each variable shrinking it. This involves cutting off a region, randomly sampling in the cutting off region and reversing the cut if any of the random points are feasible. The feasibility of a random point is determined with the subroutines described above. After the stopping
+47
+point for the used algorithm is reached, the new shrunk bounds are displayed to the console.
+4.4 Software Testing
+Test Suite- Choice of Test Models
+The Test Suite contains 5 complex test models. The test models showing bounds and constraints as well as matlab output are shown in Appendix C. The test models are chosen such that many possible combinations of non-linear bounds can be tested. For instance, Model 1 started with simple variables and bounds; Model 2 had trigonometric functions; Model 3 had trigonometric functions with many variables; Model 4 had logarithmic functions; Model 5 had several variables with trigonometric and logarithmic functions.
+This was just an initial testing and rigorous testing followed in the second half of the Project in Jan 2015.
+Testing for Parallelism
+Sysinternals suite with Procmon was downloaded to view the performance of each core. However, we could just observe thread activity and other details, as seen from the image below-
+48
+Fig 9: Procmon Application showing thread activity
+So we used Task Manager to observe the thread activity and CPU usage.
+Several kinds of testing was done-
+1. Unit Testing please see Appendix C
+2. Matlab Testing please see Appendix D
+3. Boundary Cases Testing please see Appendix E
+4. Testing for Parallelism please see Appendix E
+The test code and results are given the appendices as mentioned. The linear model as well as non-linear model testing of 10,000 variables with 10,000 bounds and 10,000 constraints is not included in the Appendix E due to their large sizes and have been included separately as text files. The summary of the test results is given in the next Section 5 and discussion thereafter.
+49
+5.0 Experiments
+5.1 Test Models
+5.1.1 Unit Testing in Julia
+Few unit tests were conducted in Julia, please refer to Appendix C on page74. Julia had many limitations therefore only few unit tests using the features that JuMP supports were recorded.
+5.1.2 Testing in Matlab Initial Testing that was done in Fall 2014 was in Matlab as the software code was being developed and testing could not be performed in it. The feasible regions of the test suite model were plotted in Matlab. Please refer to Appendix D on page 76 .
+5.1.3 Testing the Boundary Cases
+Boundary cases of zero value, simple quadratic, simple logarithmic, higher degree than 2 functions, trigonometric functions, simple non linear model of 100 variables, non-linear quadratic model of 1000 variables and a huge non-linear model of 20,000 variables and a huge linear model of 20,000 variables were tested. The results are shown in Table 2. The tests that were run are shown in Appendix E on page .
+50
+# Boundary Tests Total # Variables # Bounds # Constraints Success/Failure Bounds Shrunk
+1
+Simple quadratic
+1,000
+500
+500
+Success Yes
+2
+Zero Value
+20,000
+5,000
+5,000
+Failure na
+3
+Higher degree than 2
+100
+3
+3
+Failure na
+4
+Simple Logarithmic
+100
+3
+3
+Failure na
+5
+Simple Trigonometric
+100
+3
+3
+Failure na
+6
+Non-linear
+100
+17
+17
+Success Yes
+7
+Non-linear quadratic
+1,000
+500
+500
+Success Yes
+8
+Big data non-linear
+20,000
+10,000
+10,000
+Success Yes
+9
+Big data linear
+20,000
+10,000
+10,000
+Success Yes
+Table 2: Results of All including Boundary Cases Testing
+5.1.4 Testing for Parallelism and Core Performance  Model 1- A 1,000 variables Non- linear Model with 500 bounds and 500 constraints  Model 2- A 20,000 variables Non-Linear Model with 10,000 bounds and 10,000 constraints  Model 3- A 20,000 variables Linear Model with 10,000 bounds and 10,000 constraints These three models were run for two kinds of comparisons- 1. Number of variables affecting the performance- so model 1 and model 2 were both non-linear the difference only being in the number of variables 2. Linearity and non-linearity affecting the performance- so both model 2 and model 3 had same number of variables, bounds and constraints
+51
+The tests were conducted in parallel while doing boundary cases, but run four times each to test for each thread performance singly or in group of two or group of three or lastly group of four. The testing is shown in Appendix E on page . The results are depicted in Table 3.
+500 variables Non-Linear Test Model 20000 variables Non-Linear Test Model
+# of threads Time in secs Time in secs
+4
+42.858771450
+835.740470681
+3
+26.967527039
+920.483376036
+2
+23.935917125
+719.419029553
+1
+6.138288125
+403.371573941
+Table 3: Results of Comparison Testing for Number of Variables Performance
+From this table we observe that with similar data type, with fewer variables, the execution time is faster as expected. Also, the non linear model execution time decreased with 4 processors. When the testing with done with processors added on the console outside the IDE, the execution times of linear and non-linear models were recorded as-
+Table 4: Results of Comparison Testing for Linearity and Non-Linearity Performance
+2000 variables Linear Test Model 20000 variables Non-Linear Test Model
+# of threads Time in secs Time in secs
+4
+1400.529940703
+2519.513124548
+3
+1410.917371831
+2287.932003947
+2
+1414.836588503
+1669.173712322
+1
+839.254226174
+760.294314357
+52
+We find from Table 4 results that non-linear data type variables ran faster than the linear data type for some reason. The number of variables for both type of data models were 20,000 with 10,000 bounds and 10,000 constraints. This could be due to quality of data.
+The individual thread activity with one, two, three and four executions can be very clearly observed from Resource Monitor.
+With 1 processor Fig 10: Thread activity with one processor
+53
+With 2 processors Fig 11: Thread activity with two processors
+With 3 processors Fig 12: Thread activity with three processors
+54
+With 4 processors Fig 13: Thread activity with four processors
+Although the above 4 diagrams of CPU usage and thread activity may not be clear but we observed on large screen that with one processor added outside of IDE, it was using 6 threads but as we went on increasing the number of processors, we observed that with four processors- the number of threads with first were 6 and 5 for the rest of three processors. This observation was important as this means the first processor had more number of threads.
+55
+5.2 Results and Discussion
+5.2.1 Unit Testing in Julia
+Julia had many limitations so only successful tests are shown in Appendix C on page . The syntax of Julia language is peculiar and not flexible. Only quadratic functions were successfully tested. All logarithmic, trigonometric and higher than degree 2 polynomials, zero value, logarithmic and trigonometric tests failed due to limitations of the Julia program.
+5.2.2 Testing in Matlab
+The Test Suite contained 5 complex test models. The test models showing bounds and constraints as well as matlab output are shown in Appendix D. The testing was done in Matlab as the software code was being developed in parallel in Julia program. The test models were chosen such that many possible combinations of non-linear bounds could be tested. For instance,
+Model 1 started with simple variables and bounds;
+Model 2 had trigonometric functions;
+Model 3 had trigonometric functions with many variables;
+Model 4 had logarithmic functions;
+Model 5 had several variables with trigonometric and logarithmic functions.
+It was found that the feasible regions were plotted successfully in Matlab and this gave us a general idea of how the plot would look like in Julia. However, Julia program
+56
+was unable to take polynomial functions of degree higher than 2. Other tests in Julia were being investigated at the same time.
+5.2.3 Testing the Boundary Cases
+The testing is shown in Appendix E on page . The results from table 2 show that simple quadratic, simple non linear, huge non-linear model with 20,000 variables and huge linear model with 20,000 variable tests were successful.
+Only few tests are included in the appendix. All the test models and their results have been posted on Git Hub due to their extremely large size. The link is https://github.com/SYSC4907BoundShrinkerProject/BoundShrinker.git
+The summary results of the Non-Linear Model are as shown below for explaination and analysis-
+No bounds have been shrunk for variables other than-
+2.0 <= x[586] <= 21.29568131960327
+7.0 <= x[695] <= 20.767917389271734
+13.0 <= x[1847] <= 21.90868067217735
+3.0 <= x[2378] <= 21.455415568484558
+18.0 <= x[2523] <= 21.377328746886377
+2.0 <= x[2658] <= 22.60710717191546
+57
+7.0 <= x[2680] <= 20.664061693750018
+16.0 <= x[2690] <= 21.223948809688984
+18.0 <= x[2820] <= 22.784737116058093
+13.0 <= x[2944] <= 22.44398882600713
+7.0 <= x[3041] <= 21.394066636858305
+2.0 <= x[3797] <= 20.782707597501496
+9.0 <= x[3861] <= 22.64697670476644
+19.0 <= x[3955] <= 21.48647500576703
+14.0 <= x[4094] <= 21.80372497229513
+18.0 <= x[4102] <= 21.58630891131782
+12.0 <= x[4325] <= 21.3052949549526
+10.0 <= x[4385] <= 22.680784320319212
+6.0 <= x[5025] <= 20.775271916683657
+19.0 <= x[5109] <= 21.177113150294794
+14.0 <= x[5167] <= 21.882113075912795
+19.0 <= x[5471] <= 21.27571453849312
+17.0 <= x[5496] <= 20.681641174598212
+11.0 <= x[6183] <= 22.010048377100127
+7.0 <= x[6219] <= 20.615219366110246
+14.0 <= x[6636] <= 21.38910613492119
+14.0 <= x[6829] <= 22.14270680651224
+10.0 <= x[7155] <= 20.82313416666282
+5.0 <= x[7239] <= 21.216553705574118
+17.0 <= x[7407] <= 22.752270326763
+8.0 <= x[7414] <= 20.95005606469366
+12.0 <= x[7461] <= 22.074385782899526
+9.0 <= x[8799] <= 21.64969986552063
+8.0 <= x[8844] <= 21.13767259501546
+58
+7.0 <= x[8914] <= 22.44414098864323
+4.0 <= x[8957] <= 21.013051396042574
+11.0 <= x[9333] <= 20.86318810643523
+12.0 <= x[9398] <= 22.195456520363198
+Time: 1728.516381932 seconds
+Fig 14: Non-Linear Model with 10,000 bounds and 10,000 constraints Test Result Summary
+This means we have bounds shrunk for these variable giving us a lower bound and an upper bound. Now, let us take the first result and anlyse it, which is
+2.0 <= x[586] <= 21.29568131960327
+The original bounds for x[586] were
+addBound(2,9599)
+The original constraints were
+addConstraint(x[6576]*x[1200]+x[8012]^2,"<=",1622)
+So we confirm that indeed x[586] was bounded by 2 and 9599 as its value is lying between 2 as lower bound and 21.29568 as upper bound and it is also satisfying the constraint of being less than 1622.
+Furthermore we observe that original bounds of 2 and 9599 were shrunk to 2 and 21.29568 i.e there has been a shrinkage of 22.1853% for x[586] variable. Similarly we could compute for other variables. In fact if we onbserve closely we can see that all the variables listed have been approximately shrunk by 22%.
+59
+5.2.4 Testing for Parallelism and Core Performance
+Fig 15: Comparison of Core Performance of 3 models
+(1000 variables non-linear, 20,000 non-linear and 20,000 linear test models)
+The speedups and efficiencies of the three models can be calculated as- Speedup=TSTN
+and Efficiency=SpeedupN
+TS = time required to execute a task with a single processor
+60
+TN= time required to execute a task with N processors
+0 < Efficiency < 1
+#. Test Model Speedup Efficiency
+1
+1000 variables
+Non-Linear Model
+0.14322128
+0.0358=35.8%
+2
+20000 variables
+Non-Linear Model
+0.263140748
+0.30176=30.18%
+3
+20000 variables
+Linear Model
+0.599240474
+0.1498=14.98%
+Table 5: Calculation of Speedups and Efficiencies
+An ideal Speedup should make the execution N times faster and that is observed in the cases of switching from 3rd to 4th processor as observed both in tables 3 and 4 . However in the case of switching from the 1st to the 2nd processor, the execution time is not rduced. This could be because of various reasons like- Amdahl’s Law, Overheads and slower first processor.
+Amdahl’s Law states that only a portion of the work can be performed in parallel, the rest would be executed in series.
+The overheads for communicating between processes is not justified by the amount we divide the task up among different processors. So it causes the execution time to slow down.
+Sometimes by adding a slower first processor slows the entire execution time more than if the last processor were slow.
+61
+6.0 Conclusions and Recommendations
+When an optimization problem has variable bounds that are much larger than the problems feasible region, the optimization problem is more difficult to work with and to use heuristics on. Our project was to create software that takes such an optimization problem with large variable bound and return variable bounds smaller and closer to the feasible region. We have created software that can read in an optimization problem from a text file, calculate smaller variable bound then display those bounds on the screen. The solution we implemented uses a linear range cutting algorithm that generates random points to determine if a certain reduction to the variable bounds can be made. The software is written in the Julia programming language and uses Julia’s JuMP library as a modelling language to model and manipulate the given optimization problem. Currently the software only uses one algorithm for reducing the variable bounds. A program using a second algorithm was created but not intergrated into the main software. Many other algorithms for bound shrinking exist. In the future some of these other algorithms could be used in addition to the current range cutting algorithm.
+While working on this project we decided to use the Julia and the JuMP library. This decision was made because Julia support parallelism well and it was predicted that good support of parallelism would be important. JuMP was then chosen because of how well it could be used with Julia. However while working on the project it was discovered that JuMP is limited in what types of models it can support, as it can only represent quadratics and linear terms. This is likely do to how new the Julia language and JuMP are. It could be that in the future JuMP could be extended to include high order polynomials. At the
+62
+present though using another modelling language would have been a better solution. Another option that might have been preferable would have been to not use a modelling language and to do the data manipulation in the programming language directly. This may of reduced the complexity of the code since we would have to convert and adapt to the data format the modelling language uses.
+Parallelism was implemented by have multiple threads generating the random points for the diferrent variables at the same time. However it was found that this implementation was less effecicient then the version with no parallelism. We believe this is because a small amount of work is being parallelised compared to the overhead of the inter process communication. Both versions are avaibalbe on the Github page. “BoundShrinker.jl” is the version without parallelism, while “ParallelBoundShrinker.jl” is the version with parallelism. It is suggested that “BoundShrinker.jl” is used since it is more efficient.
+63
+7.0 References
+[1] Smith L., Chinneck J.W., and Aitken V. (2013), “Constraint Consensus Concentration for Identifying Disjoint Feasible Regions in Nonlinear Programs”, Optimization Methods and Software 28(2), pp. 339–363. [3] Chinneck J.W (2004), "Discovering the Characteristics of Mathematical Programs", seminar for Northwestern University and Argonne National Laboratory. [2] John W. Chinneck. (2004, summer). “The Constraint Consensus Method for Finding Approximately Feasible Points in Nonlinear Programs.” [Online]. 16(3), pp. 255-265. Available: http://www.sce.carleton.ca/faculty/chinneck/docs/ConstraintConsensusJoC.pdf
+Website References
+1. Mathworks
+http://www.mathworks.com/help/optim/examples/using-symbolic-mathematics-with-optimization-toolbox-solvers.html
+2. Julia- Studio
+http://forio.com/labs/julia-studio/
+3. JuMP
+http://jump.readthedocs.org/en/release-0.4/jump.html#installation-guide
+4. AMPL
+http://ampl.com/
+64
+8.0 Supporting Appendices Appendix A
+Pseudocode for Shrinking the Bounds
+@author Preeti Nigam 100217175
+@version 3.1 dated Dec 3, 2014
+Input bounds
+Input constraints
+Validate constraints
+while violated {
+print error message
+}
+For (each bound b)
+Do while no feasible points have been found {
+if b is upper bound{ reduce bound by x //we don’t increase and decrease at the same time
+}
+if b is lower bound{
+increase bound by x
+}
+if (upper bound – lower bound) >= f_tolerance{
+stop
+}
+for (i=1; i<=numpoint; i++){
+get random point r (between old upper bound and new upper bound || between old lower bound and new lower bound)
+if point r satisfies all the constraints
+point f= feasible point
+if feasible {
+if upper bound{ increase bound by x/2
+}
+else if lower bound{
+reduce bound by x/2
+}
+}
+}
+}
+65
+Appendix B
+#Andrew Venus
+#November 26, 2014
+using JuMP
+#Global Variables
+#Constants
+numberOfThreads=2
+changeSize=0.1
+maximiumVariables=1000 #How many variables the software can support
+modelName="model.jl" #The name of the model file.
+randomPoints=3000/numberOfThreads
+function main()
+startTime=time_ns()
+include(modelName)
+shrinkBounds()
+endTime=time_ns()
+duruation=endTime-startTime
+#display shrunk bounds
+for i=1:numberOfVariable
+if(lowerBounds[i]>=upperBounds[i])
+println("No feasible region for variable x[", i,"]")
+else
+66
+print(lowerBounds[i]," <= x[", i,"] <= ")
+println(upperBounds[i])
+end
+end
+println("Time with ",numberOfThreads," simultaneous executions: ", duruation/1000000000, " seconds")
+end
+randomNumberGenerator = MersenneTwister()
+numberOfVariable=0
+m = Model() #JuMP model
+@defVar(m,x[1:maximiumVariables]) #Varaible array must be declared ahead of time
+#make three lists of values for expressions, equality strings and right hand side values
+#expressions[i], equalityOrInequalities[i] and rightHandSides[i] all together represent one constraint
+equalityOrInequalities = String[]
+rightHandSides = Float64[]
+expressions=Any[]
+#x[i], lowerBounds[i] and upperBounds[i] all together represent one variable bound
+lowerBounds=Float64[]
+upperBounds=Float64[]
+lowestPoint=Float64
+highestPoint=Float64
+67
+#checks if a constraint is satisified
+#note that jump only supports <=, >= and =
+function constraintSatified(equalityOrInequality,rightHandSide,leftHandSide)
+if (isequal(equalityOrInequality,"<="))
+return (leftHandSide <= rightHandSide)
+elseif (isequal(equalityOrInequality,">="))
+return (leftHandSide >= rightHandSide)
+#equality constraint is satisfied if the rightHandSide is between lowest and highest point
+#lowest and hightest points are updated when random points are generated
+elseif (isequal(equalityOrInequality,"="))
+return ((rightHandSide >= lowestPoint) && (rightHandSide <= highestPoint))
+end
+end
+#checks if all the constraints are satisfied
+function allConstraintSatisfied()
+for j=1:numberOfVariable
+leftHandSide = getValue(expressions[j])
+if (leftHandSide<lowestPoint)
+global lowestPoint=leftHandSide
+end
+if (leftHandSide>highestPoint)
+global highestPoint=leftHandSide
+end
+value = constraintSatified(equalityOrInequalities[j],rightHandSides[j],leftHandSide)
+if (!value)
+return false
+68
+end
+end
+return true
+end
+#note that jump only supports <=, >= and =
+function addConstraint(expression,equalityOrInequality,rightHandSide)
+if (isequal(equalityOrInequality,"<="))
+@addNLConstraint(m, expression <= rightHandSide)
+elseif (isequal(equalityOrInequality,">="))
+@addNLConstraint(m, expression >= rightHandSide)
+elseif (isequal(equalityOrInequality,"="))
+@addNLConstraint(m, expression == rightHandSide)
+end
+push!(equalityOrInequalities,equalityOrInequality)
+push!(rightHandSides,rightHandSide)
+push!(expressions,expression)
+end
+function addBound(lowerBound,upperBound)
+global numberOfVariable+=1
+@defVar(m, lowerBound <= x[numberOfVariable] <= upperBound )
+push!(lowerBounds,lowerBound)
+push!(upperBounds,upperBound)
+end
+#If a bound is exactly zero then multiplying won't change it.
+#In this case we add or subtract a small number instead.
+69
+#This number is calculated before hand and is small compared
+#to the intial difference between the upper and lower bound.
+function findZeroOffset(i)
+difference = upperBounds[i] - lowerBounds[i]
+zeroOffset = difference*changeSize
+if(changeSize<zeroOffset)
+return changeSize
+else
+return zeroOffset
+end
+end
+#shrinks upper and lower bounds of each variable
+function shrinkBounds()
+for i=1:numberOfVariable
+zeroOffset = findZeroOffset(i)
+global initialLower=lowerBounds[i]
+global initialUpper=upperBounds[i]
+shrinkUpperBond(i,zeroOffset)
+shrinkLowerBound(i,zeroOffset)
+end
+end
+#shrinks the upper bound of variable x[i]
+function shrinkUpperBond(i,zeroOffset)
+keepGoing=true
+while(keepGoing)
+oldUpper=upperBounds[i]
+70
+#If the bound is exactly zero then multiplying it won't change it.
+#Subtract the zeroOffset instead.
+if(upperBounds[i]==0)
+upperBounds[i]-=zeroOffset;
+else
+upperBounds[i]=upperBounds[i]*(1-changeSize)
+end
+if(upperBounds[i]<=initialLower)
+keepGoing=false
+break
+end
+#random point between 0 and the width of the cut, or (old top bound - new top bound)
+#offset the point to be from the bottom of the cut to the top of the cut
+range=(oldUpper-upperBounds[i])
+offset=(lowerBounds[i] + (upperBounds[i]-lowerBounds[i]))
+global lowestPoint=offset
+global highestPoint=upperBounds[i]
+refs = Any[]
+for(thread=1:numberOfThreads)
+ref = @spawn generatePoints(range,offset)
+push!(refs,ref)
+end
+result = false
+71
+for(thread=1:numberOfThreads)
+if(fetch(refs[thread]))
+result=true
+end
+end
+if (result)
+#undo last cut
+upperBounds[i]=oldUpper
+keepGoing=false
+h=randomPoints #break
+else
+keepGoing=true
+end
+end
+end
+#shrinks the lower bound of variable x[i]
+function shrinkLowerBound(i,zeroOffset)
+keepGoing=true
+while(keepGoing)
+oldLower=lowerBounds[i]
+#If the bound is exactly zero then multiplying it won't change it.
+#Add the zeroOffset instead.
+if(lowerBounds[i]==0)
+lowerBounds[i]+=zeroOffset;
+else
+72
+lowerBounds[i]=lowerBounds[i]*(1+changeSize)
+end
+if(lowerBounds[i]>=initialUpper)
+keepGoing=false
+break
+end
+#random point between 0 and the width of the cut, or (new bottom bound - old bottom bound)
+#offset the point to be from the bottom of the cut to the top of the cut
+range=(lowerBounds[i]-oldLower)
+offset=oldLower
+global lowestPoint=offset
+global highestPoint=upperBounds[i]
+refs = Any[]
+for(thread=1:numberOfThreads)
+ref = @spawn generatePoints(range,offset)
+push!(refs,ref)
+end
+result = false
+for(thread=1:numberOfThreads)
+if(fetch(refs[thread]))
+result=true
+end
+end
+73
+if (result)
+#undo last cut
+lowerBounds[i]=oldLower
+keepGoing=false
+h=randomPoints #break
+else
+keepGoing=true
+end
+end
+end
+function generatePoints(range,offset)
+#check n random points
+#if none are feasible then cut
+for h= 1:(randomPoints)
+#for each random point we are making, generate a x,y,z,... value
+for j=1:numberOfVariable
+point = (rand(randomNumberGenerator) * range) + offset
+setValue(x[j],point)
+end
+if (allConstraintSatisfied())
+return true
+else
+return false
+end
+end
+end
+main()
+74
+Appendix C
+5.1.1 Testing- Unit Testing in Julia
+addBound()
+unit test 1
+addBound() ->
+3-element Array{Float64,1}:
+3.04325
+4.32887
+200.0
+addConstriant()
+unit test 2
+addConstriant() ->
+3-element Array{Any,1}:
+x[1]
+x[2]²
+x[2]²
+constriantSatified()
+unit test 3
+addBound(100,200)
+addBound(100,200)
+setValue(x[1],10.0)
+setValue(x[2],15.0)
+constriantSatified("<=",13.0,x[1]+x[2]^2) ->
+x[2]² + x[1] - 13 <= 0
+unit test 4
+addBound(100,200)
+addBound(100,200)
+setValue(x[1],10.0)
+setValue(x[2],15.0)
+constriantSatified("<=",5000.0,((4/7)*x[1])-x[2]^2) ->
+-x[2]² + 0.5714285714285714 x[1] - 5000 <= 0
+allConstrinatsSatisfied()
+unit test 5
+addBound(0,1000)
+addBound(0,13000)
+addConstraint(x[1],"<=",4)
+addConstraint(x[2]^2,"=",3)
+setValue(x[1],10.0)
+setValue(x[2],15.0)
+allConstrinatsSatisfied() -> true
+75
+shrinkBounds()
+unit test 6
+addBound(0,1000)
+addBound(0,13000)
+addConstraint(x[1],"<=",4)
+addConstraint(x[2]^2,"=",3)
+shrinkBounds() ->
+BoundShrinker
+0
+.0 <= x[1] <= 3.0432527221704575
+0.0 <= x[2] <= 4.328865274910997
+main()
+unit test 7
+main() ->
+BoundShrinker
+0
+.0 <= x[1] <= 3.0432527221704575
+0.0 <= x[2] <= 4.328865274910997
+76
+Appendix D 5.1.2 Initial Testing with Matlab 1. Model 1 – with simple variables and bounds % "Model Test Suite 1.m“ Constraints y <= x + 11.5; y <= 100*x.^4; Bounds 0<=x<=1 0<=y<=13
+77
+ Model 2 had trigonometric functions % "Model Test Suite 2.m"
+Constraints y >= sin(x); y >= tan(x); Bounds -pi<=x<=pi -pi<=y<=pi
+78
+ Model 3 had trigonometric functions with many variables % "Model Test Suite 3.m“ Constraints y <= sin(x); y <= tanh(x); y <= cos(x); Bounds -pi<=x<=pi -5pi<=y<=5pi
+79
+ Model 4 had logarithmic functions % "Model Test Suite 4.m"
+Constraints y >= log(x); y >= log(x); y <= 2* log(x); Bounds -200<=x<=200 -500<=y<=500
+80
+ Model 5 had several variables with trigonometric and logarithmic functions. % "Model Test Suite 5.m" Constraints y <= log(x); y <= cos(x); y <= 2* log(x); Y<= 4*x -3.5*y; Bounds -2000<=x<=20000 -5000<=y<=50000
+81
+Appendix E
+5.1.3 Testing Boundary Cases and Parallelism
+Please note that 2 models of 20,000 variables with 10,000 bounds and 10,000 constraints, one non-linear and one linear are not included here due to report getting over a thousand pages. They are attached separately as text file along with this report.
+Input
+Zero Testing- 10000 variables non-linear model
+Output
+model
+LoadError("C:/Users/preetinigam-admin/Desktop/model.jl",16490,BoundsError())
+Input simple linear
+addBound(0,100)
+addBound(0,1300)
+addConstraint(x[1]^2-x[2]+x[1]+1.5,"<=",4)
+addConstraint(x[2]^2-10,"=",3)
+Output
+BoundShrinker
+0.0 <= x[1] <= 1.6423203268260673
+0.0 <= x[2] <= 1.703026661228909
+Input simple linear
+addBound(0,100)
+addBound(0,1300)
+addConstraint(x[1]*x[2]-x[2]+x[1]+1.5,"<=",4)
+addConstraint(x[2]*x[1]-10,"=",3)
+Output
+BoundShrinker
+0.0 <= x[1] <= 1.6423203268260673
+0.0 <= x[2] <= 1.703026661228909
+Input higher than degree 2
+addBound(0,100)
+addBound(0,1300)
+addConstraint(x[1]^3-x[2]+x[1]+1.5,"<=",4)
+addConstraint(x[2]^2-10,"=",3)
+Output
+82
+ErrorException("Only exponents of 2 are currently supported. Are you trying to build a nonlinear problem? Make sure you use @addNLConstraint/@setNLObjective.")))
+Input trigonometric function
+addBound(0,100)
+addBound(0,1300)
+addConstraint(sinh(x[1])-x[2]+x[1]+1.5,"<=",4)
+addConstraint(cos(x[2])-10,"=",3)
+Output
+LoadError("//tsclient/M/Sysc 4907/new/BoundShrinker.jl",176,LoadError("//tsclient/M/Sysc 4907/new/model2.jl",3,ErrorException("cos is not defined for type Variable. Are you trying to build a nonlinear problem? Make sure you use @addNLConstraint/@setNLObjective.")))
+Input non-linear in the main program NL constraint
+addBound(0,100)
+addBound(0,1300)
+addConstraint(x[1]*x[2]-x[2]+x[1]+1.5,"<=",400)
+addConstraint(x[2]*x[1]-10,"=",300)
+Output
+BoundShrinker
+0.0 <= x[1] <= 20.58911320946491
+0.0 <= x[2] <= 21.350164248738874
+Input non-linear in the main program NL constraint (17 variables testing)
+addBound(0,100)
+addBound(0,1300)
+addBound(0,100)
+addBound(0,200)
+addBound(0,10056)
+addBound(0,13005)
+addBound(0,100)
+addBound(0,1300)
+addBound(0,1000807)
+addBound(0,1000000)
+addBound(0,900)
+addBound(0,300)
+addBound(0,700)
+addBound(0,96070)
+addBound(0,100)
+addBound(0,400000000)
+addBound(0,6000000)
+addConstraint(x[1]*x[2]-x[2]+x[1]+x[3]^2-x[4]*1.5,"<=",4000)
+addConstraint(x[5]*x[6]-10,"=",300)
+addConstraint(x[6]*x[7]-x[8]^2+x[9]^2+1.5,"<=",5000)
+addConstraint(x[10]*x[11]-x[12]+x[13]-200,"<=",10000)
+83
+addConstraint(x[14]*x[15]-10,"=",300)
+addConstraint(x[16]*x[17]-100,"=",3000)
+Output
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+exception on exception on 11: : ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+84
+ERROR: BoundsError()
+in getindex at array.jl:246
+in allConstrinatsSatisfied at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:49
+in shrinkLowerBound at //tsclient/M/Sysc 4907/new/BoundShrinker.jl:155
+0.0 <= x[1] <= 43.04672100000001
+0.0 <= x[2] <= 44.637889663802696
+0.0 <= x[3] <= 43.04672100000001
+0.0 <= x[4] <= 41.17822641892982
+0.0 <= x[5] <= 41.97935442269698
+0.0 <= x[6] <= 43.9750018353631
+0.0 <= x[7] <= 43.04672100000001
+0.0 <= x[8] <= 44.637889663802696
+0.0 <= x[9] <= 40.51643642202378
+0.0 <= x[10] <= 40.48376602284337
+0.0 <= x[11] <= 42.391158275216235
+0.0 <= x[12] <= 45.028390589099764
+0.0 <= x[13] <= 40.70481590212807
+0.0 <= x[14] <= 43.882461428795914
+0.0 <= x[15] <= 43.04672100000001
+0.0 <= x[16] <= 44.35283921498281
+0.0 <= x[17] <= 40.50930731098483
+_____________________________________________________________________
+Input non-linear in the main program NL constraint (5000 bounds and 5000 constraints variables testing)
+addBound(0,792)
+addBound(0,3874)
+addBound(0,446)
+addBound(0,4137)
+addBound(0,4874)
+addBound(0,2445)
+addBound(0,598)
+addBound(0,2156)
+addBound(0,2346)
+addBound(0,3317)
+addBound(0,691)
+addBound(0,1453)
+addBound(0,4796)
+addBound(0,2049)
+addBound(0,2604)
+addBound(0,4741)
+addBound(0,2389)
+addBound(0,175)
+addBound(0,1269)
+addBound(0,1815)
+addBound(0,390)
+addBound(0,4692)
+addBound(0,2354)
+addBound(0,777)
+addBound(0,500)
+85
+addBound(0,3148)
+addBound(0,2992)
+addBound(0,4145)
+addBound(0,981)
+addBound(0,1168)
+addBound(0,369)
+addBound(0,657)
+addBound(0,2507)
+addBound(0,299)
+addBound(0,3087)
+addBound(0,20)
+addBound(0,2693)
+addBound(0,1438)
+addBound(0,588)
+addBound(0,1469)
+addBound(0,607)
+addBound(0,3400)
+addBound(0,1746)
+addBound(0,1634)
+addBound(0,566)
+addBound(0,3603)
+addBound(0,4603)
+addBound(0,3986)
+addBound(0,3188)
+addBound(0,2682)
+addBound(0,4518)
+addBound(0,130)
+addBound(0,3996)
+addBound(0,4573)
+addBound(0,2387)
+addBound(0,3698)
+addBound(0,530)
+addBound(0,4171)
+addBound(0,764)
+addBound(0,1272)
+addBound(0,2011)
+addBound(0,579)
+addBound(0,3184)
+addBound(0,4903)
+addBound(0,4924)
+addBound(0,214)
+addBound(0,414)
+addBound(0,45)
+addBound(0,3751)
+addBound(0,2358)
+addBound(0,3857)
+addBound(0,3750)
+addBound(0,1061)
+addBound(0,2622)
+addBound(0,1044)
+addBound(0,4121)
+addBound(0,613)
+addBound(0,4622)
+addBound(0,2133)
+addBound(0,1217)
+86
+addBound(0,1239)
+addBound(0,53)
+addBound(0,3584)
+addBound(0,1071)
+addBound(0,1372)
+addBound(0,1122)
+addBound(0,2595)
+addBound(0,3805)
+addBound(0,353)
+addBound(0,3371)
+addBound(0,864)
+addBound(0,1290)
+addBound(0,573)
+addBound(0,697)
+addBound(0,1296)
+addBound(0,3024)
+addBound(0,4104)
+addBound(0,591)
+addBound(0,4710)
+addBound(0,2519)
+addBound(0,774)
+addBound(0,331)
+addBound(0,849)
+addBound(0,139)
+addBound(0,462)
+addBound(0,4823)
+addBound(0,2274)
+addBound(0,17)
+addBound(0,4152)
+addBound(0,1111)
+addBound(0,1329)
+addBound(0,2688)
+addBound(0,3625)
+addBound(0,3967)
+addBound(0,4344)
+addBound(0,2233)
+addBound(0,847)
+addBound(0,1927)
+addBound(0,2352)
+addBound(0,500)
+addBound(0,2272)
+addBound(0,2055)
+addBound(0,4721)
+addBound(0,960)
+addBound(0,1339)
+addBound(0,4119)
+addBound(0,1308)
+addBound(0,260)
+addBound(0,1432)
+addBound(0,4325)
+addBound(0,2724)
+addBound(0,2998)
+addBound(0,2463)
+addBound(0,911)
+addBound(0,4401)
+87
+addBound(0,3586)
+addBound(0,2014)
+addBound(0,4388)
+addBound(0,1989)
+addBound(0,2590)
+addBound(0,4340)
+addBound(0,2660)
+addBound(0,3808)
+addBound(0,4628)
+addBound(0,3606)
+addBound(0,2211)
+addBound(0,4606)
+addBound(0,525)
+addBound(0,1733)
+addBound(0,365)
+addBound(0,35)
+addBound(0,622)
+addBound(0,4622)
+addBound(0,1215)
+addBound(0,95)
+addBound(0,4603)
+addBound(0,3087)
+addBound(0,1691)
+addBound(0,4135)
+addBound(0,1508)
+addBound(0,3476)
+addBound(0,966)
+addBound(0,76)
+addBound(0,1227)
+addBound(0,1870)
+addBound(0,2574)
+addBound(0,220)
+addBound(0,4875)
+addBound(0,1705)
+addBound(0,3574)
+addBound(0,2034)
+addBound(0,2009)
+addBound(0,3003)
+addBound(0,2994)
+addBound(0,1295)
+addBound(0,2887)
+addBound(0,3008)
+addBound(0,1285)
+addBound(0,3769)
+addBound(0,3671)
+addBound(0,2242)
+addBound(0,4098)
+addBound(0,4900)
+addBound(0,1199)
+addBound(0,2335)
+addBound(0,3841)
+addBound(0,1632)
+addBound(0,1834)
+addBound(0,197)
+addBound(0,4671)
+88
+addBound(0,3240)
+addBound(0,3365)
+addBound(0,1621)
+addBound(0,4640)
+addBound(0,1780)
+addBound(0,874)
+addBound(0,3528)
+addBound(0,3285)
+addBound(0,4631)
+addBound(0,3080)
+addBound(0,348)
+addBound(0,1776)
+addBound(0,4190)
+addBound(0,1501)
+addBound(0,4321)
+addBound(0,3983)
+addBound(0,1878)
+addBound(0,2536)
+addBound(0,3421)
+addBound(0,1763)
+addBound(0,44)
+addBound(0,2728)
+addBound(0,2018)
+addBound(0,3383)
+addBound(0,2554)
+addBound(0,3043)
+addBound(0,3505)
+addBound(0,4917)
+addBound(0,2121)
+addBound(0,636)
+addBound(0,3034)
+addBound(0,2967)
+addBound(0,795)
+addBound(0,3541)
+addBound(0,881)
+addBound(0,2605)
+addBound(0,29)
+addBound(0,496)
+addBound(0,1029)
+addBound(0,1160)
+addBound(0,2676)
+addBound(0,3545)
+addBound(0,270)
+addBound(0,1654)
+addBound(0,3817)
+addBound(0,275)
+addBound(0,3160)
+addBound(0,4472)
+addBound(0,4210)
+addBound(0,3556)
+addBound(0,3057)
+addBound(0,878)
+addBound(0,211)
+addBound(0,1954)
+addBound(0,4051)
+89
+addBound(0,1093)
+addBound(0,3762)
+addBound(0,3250)
+addBound(0,1679)
+addBound(0,2791)
+addBound(0,2525)
+addBound(0,1046)
+addBound(0,4775)
+addBound(0,3481)
+addBound(0,959)
+addBound(0,1340)
+addBound(0,1124)
+addBound(0,1652)
+addBound(0,3107)
+addBound(0,3271)
+addBound(0,3097)
+addBound(0,1351)
+addBound(0,3369)
+addBound(0,945)
+addBound(0,4912)
+addBound(0,2290)
+addBound(0,1598)
+addBound(0,4639)
+addBound(0,2991)
+addBound(0,1468)
+addBound(0,4157)
+addBound(0,1981)
+addBound(0,2919)
+addBound(0,1832)
+addBound(0,2209)
+addBound(0,3155)
+addBound(0,1609)
+addBound(0,3541)
+addBound(0,983)
+addBound(0,701)
+addBound(0,931)
+addBound(0,3354)
+addBound(0,1829)
+addBound(0,388)
+addBound(0,2237)
+addBound(0,4623)
+addBound(0,169)
+addBound(0,4821)
+addBound(0,4864)
+addBound(0,1533)
+addBound(0,4084)
+addBound(0,4298)
+addBound(0,2259)
+addBound(0,396)
+addBound(0,4466)
+addBound(0,1114)
+addBound(0,4852)
+addBound(0,3561)
+addBound(0,2892)
+addBound(0,2366)
+90
+addBound(0,4160)
+addBound(0,1544)
+addBound(0,1137)
+addBound(0,3399)
+addBound(0,2843)
+addBound(0,905)
+addBound(0,897)
+addBound(0,2090)
+addBound(0,4751)
+addBound(0,674)
+addBound(0,3784)
+addBound(0,4740)
+addBound(0,91)
+addBound(0,748)
+addBound(0,3529)
+addBound(0,523)
+addBound(0,3052)
+addBound(0,455)
+addBound(0,139)
+addBound(0,2478)
+addBound(0,1155)
+addBound(0,3700)
+addBound(0,2502)
+addBound(0,582)
+addBound(0,3083)
+addBound(0,4941)
+addBound(0,1491)
+addBound(0,936)
+addBound(0,3094)
+addBound(0,3619)
+addBound(0,4957)
+addBound(0,2717)
+addBound(0,1203)
+addBound(0,1223)
+addBound(0,3789)
+addBound(0,554)
+addBound(0,64)
+addBound(0,2228)
+addBound(0,4310)
+addBound(0,4852)
+addBound(0,461)
+addBound(0,4537)
+addBound(0,4501)
+addBound(0,3823)
+addBound(0,4755)
+addBound(0,3338)
+addBound(0,854)
+addBound(0,3375)
+addBound(0,656)
+addBound(0,4407)
+addBound(0,2031)
+addBound(0,4338)
+addBound(0,4963)
+addBound(0,1936)
+addBound(0,458)
+91
+addBound(0,2935)
+addBound(0,4120)
+addBound(0,4902)
+addBound(0,3175)
+addBound(0,3616)
+addBound(0,2601)
+addBound(0,1857)
+addBound(0,1187)
+addBound(0,2028)
+addBound(0,3301)
+addBound(0,538)
+addBound(0,2294)
+addBound(0,812)
+addBound(0,4626)
+addBound(0,726)
+addBound(0,4081)
+addBound(0,413)
+addBound(0,150)
+addBound(0,2880)
+addBound(0,1741)
+addBound(0,4815)
+addBound(0,2776)
+addBound(0,3563)
+addBound(0,3454)
+addBound(0,4268)
+addBound(0,4880)
+addBound(0,4617)
+addBound(0,720)
+addBound(0,2136)
+addBound(0,835)
+addBound(0,4418)
+addBound(0,803)
+addBound(0,2947)
+addBound(0,3489)
+addBound(0,4894)
+addBound(0,4303)
+addBound(0,2649)
+addBound(0,4381)
+addBound(0,479)
+addBound(0,1173)
+addBound(0,4851)
+addBound(0,1617)
+addBound(0,2634)
+addBound(0,2186)
+addBound(0,4394)
+addBound(0,1699)
+addBound(0,3100)
+addBound(0,2864)
+addBound(0,692)
+addBound(0,2286)
+addBound(0,845)
+addBound(0,1913)
+addBound(0,2568)
+addBound(0,1698)
+addBound(0,1523)
+92
+addBound(0,758)
+addBound(0,2355)
+addBound(0,4462)
+addBound(0,3316)
+addBound(0,4984)
+addBound(0,3698)
+addBound(0,1560)
+addBound(0,3268)
+addBound(0,4258)
+addBound(0,570)
+addBound(0,4665)
+addBound(0,2820)
+addBound(0,3644)
+addBound(0,4806)
+addBound(0,3473)
+addBound(0,989)
+addBound(0,597)
+addBound(0,546)
+addBound(0,2755)
+addBound(0,1846)
+addBound(0,3860)
+addBound(0,130)
+addBound(0,4091)
+addBound(0,615)
+addBound(0,16)
+addBound(0,4560)
+addBound(0,2219)
+addBound(0,1341)
+addBound(0,2444)
+addBound(0,1818)
+addBound(0,992)
+addBound(0,3501)
+addBound(0,3082)
+addBound(0,273)
+addBound(0,4772)
+addBound(0,3051)
+addBound(0,1097)
+addBound(0,2430)
+addBound(0,1537)
+addBound(0,392)
+addBound(0,4777)
+addBound(0,1007)
+addBound(0,2534)
+addBound(0,1753)
+addBound(0,4369)
+addBound(0,850)
+addBound(0,1945)
+addBound(0,4788)
+addBound(0,3612)
+addBound(0,3018)
+addBound(0,2413)
+addBound(0,4894)
+addBound(0,2527)
+addBound(0,2935)
+addBound(0,1180)
+93
+addBound(0,4546)
+addBound(0,4870)
+addBound(0,1965)
+addBound(0,516)
+addBound(0,3251)
+addBound(0,4237)
+addBound(0,3906)
+addBound(0,425)
+addBound(0,2611)
+addBound(0,1056)
+addBound(0,3683)
+addBound(0,2485)
+addBound(0,339)
+addBound(0,1881)
+addBound(0,1031)
+addBound(0,311)
+addBound(0,3119)
+addBound(0,837)
+addBound(0,1208)
+addBound(0,1216)
+addBound(0,4106)
+addBound(0,3216)
+addBound(0,809)
+addBound(0,2525)
+addBound(0,4045)
+addBound(0,990)
+addBound(0,4258)
+addBound(0,1298)
+addBound(0,810)
+addBound(0,824)
+addBound(0,2761)
+addBound(0,2861)
+addBound(0,1803)
+addBound(0,4727)
+addBound(0,1676)
+addConstraint(x[194]*x[450]^2,"<=",231)
+addConstraint(x[439]*x[492]^2,"<=",480)
+addConstraint(x[405]*x[185]^2,"<=",325)
+addConstraint(x[184]*x[455]^2,"<=",273)
+addConstraint(x[98]*x[493]^2,"<=",243)
+addConstraint(x[463]*x[27]^2,"<=",237)
+addConstraint(x[348]*x[136]^2,"<=",440)
+addConstraint(x[332]*x[355]^2,"<=",423)
+addConstraint(x[474]*x[344]^2,"<=",141)
+addConstraint(x[285]*x[110]^2,"<=",244)
+addConstraint(x[475]*x[61]^2,"<=",389)
+addConstraint(x[107]*x[182]^2,"<=",138)
+addConstraint(x[65]*x[344]^2,"<=",389)
+addConstraint(x[180]*x[221]^2,"<=",131)
+addConstraint(x[263]*x[126]^2,"<=",168)
+addConstraint(x[331]*x[53]^2,"<=",385)
+addConstraint(x[358]*x[272]^2,"<=",210)
+addConstraint(x[263]*x[124]^2,"<=",441)
+94
+addConstraint(x[423]*x[112]^2,"<=",269)
+addConstraint(x[297]*x[420]^2,"<=",157)
+addConstraint(x[83]*x[63]^2,"<=",391)
+addConstraint(x[297]*x[82]^2,"<=",186)
+addConstraint(x[434]*x[230]^2,"<=",112)
+addConstraint(x[301]*x[262]^2,"<=",458)
+addConstraint(x[425]*x[338]^2,"<=",216)
+addConstraint(x[53]*x[333]^2,"<=",381)
+addConstraint(x[164]*x[193]^2,"<=",294)
+addConstraint(x[20]*x[4]^2,"<=",225)
+addConstraint(x[416]*x[489]^2,"<=",307)
+addConstraint(x[97]*x[40]^2,"<=",169)
+addConstraint(x[371]*x[488]^2,"<=",379)
+addConstraint(x[363]*x[221]^2,"<=",413)
+addConstraint(x[378]*x[154]^2,"<=",338)
+addConstraint(x[357]*x[25]^2,"<=",209)
+addConstraint(x[319]*x[271]^2,"<=",229)
+addConstraint(x[440]*x[189]^2,"<=",333)
+addConstraint(x[28]*x[374]^2,"<=",318)
+addConstraint(x[376]*x[272]^2,"<=",163)
+addConstraint(x[368]*x[286]^2,"<=",390)
+addConstraint(x[50]*x[97]^2,"<=",238)
+addConstraint(x[38]*x[498]^2,"<=",210)
+addConstraint(x[222]*x[63]^2,"<=",416)
+addConstraint(x[440]*x[229]^2,"<=",390)
+addConstraint(x[80]*x[320]^2,"<=",400)
+addConstraint(x[60]*x[126]^2,"<=",132)
+addConstraint(x[210]*x[268]^2,"<=",415)
+addConstraint(x[219]*x[15]^2,"<=",245)
+addConstraint(x[38]*x[363]^2,"<=",192)
+addConstraint(x[215]*x[105]^2,"<=",159)
+addConstraint(x[469]*x[410]^2,"<=",121)
+addConstraint(x[332]*x[177]^2,"<=",212)
+addConstraint(x[424]*x[175]^2,"<=",130)
+addConstraint(x[48]*x[431]^2,"<=",200)
+addConstraint(x[58]*x[383]^2,"<=",359)
+addConstraint(x[345]*x[194]^2,"<=",280)
+addConstraint(x[32]*x[388]^2,"<=",121)
+addConstraint(x[59]*x[348]^2,"<=",168)
+addConstraint(x[455]*x[499]^2,"<=",146)
+addConstraint(x[61]*x[118]^2,"<=",102)
+addConstraint(x[237]*x[197]^2,"<=",190)
+addConstraint(x[332]*x[126]^2,"<=",148)
+addConstraint(x[64]*x[124]^2,"<=",239)
+addConstraint(x[358]*x[202]^2,"<=",358)
+addConstraint(x[425]*x[314]^2,"<=",147)
+addConstraint(x[208]*x[331]^2,"<=",298)
+addConstraint(x[440]*x[292]^2,"<=",281)
+addConstraint(x[443]*x[194]^2,"<=",440)
+addConstraint(x[398]*x[216]^2,"<=",310)
+addConstraint(x[17]*x[367]^2,"<=",436)
+addConstraint(x[350]*x[185]^2,"<=",357)
+addConstraint(x[277]*x[207]^2,"<=",272)
+addConstraint(x[186]*x[18]^2,"<=",464)
+addConstraint(x[47]*x[318]^2,"<=",347)
+95
+addConstraint(x[486]*x[381]^2,"<=",151)
+addConstraint(x[262]*x[404]^2,"<=",319)
+addConstraint(x[31]*x[11]^2,"<=",272)
+addConstraint(x[229]*x[88]^2,"<=",104)
+addConstraint(x[418]*x[400]^2,"<=",297)
+addConstraint(x[356]*x[271]^2,"<=",307)
+addConstraint(x[96]*x[39]^2,"<=",116)
+addConstraint(x[307]*x[63]^2,"<=",241)
+addConstraint(x[277]*x[420]^2,"<=",427)
+addConstraint(x[141]*x[275]^2,"<=",205)
+addConstraint(x[388]*x[409]^2,"<=",387)
+addConstraint(x[133]*x[447]^2,"<=",370)
+addConstraint(x[312]*x[307]^2,"<=",371)
+addConstraint(x[368]*x[322]^2,"<=",237)
+addConstraint(x[173]*x[28]^2,"<=",211)
+addConstraint(x[398]*x[499]^2,"<=",336)
+addConstraint(x[33]*x[225]^2,"<=",402)
+addConstraint(x[450]*x[26]^2,"<=",221)
+addConstraint(x[385]*x[499]^2,"<=",437)
+addConstraint(x[135]*x[426]^2,"<=",308)
+addConstraint(x[258]*x[368]^2,"<=",395)
+addConstraint(x[275]*x[11]^2,"<=",124)
+addConstraint(x[202]*x[315]^2,"<=",260)
+addConstraint(x[438]*x[132]^2,"<=",300)
+addConstraint(x[181]*x[476]^2,"<=",300)
+addConstraint(x[25]*x[40]^2,"<=",121)
+addConstraint(x[143]*x[404]^2,"<=",452)
+addConstraint(x[303]*x[53]^2,"<=",482)
+addConstraint(x[37]*x[290]^2,"<=",341)
+addConstraint(x[375]*x[64]^2,"<=",492)
+addConstraint(x[71]*x[154]^2,"<=",193)
+addConstraint(x[470]*x[417]^2,"<=",205)
+addConstraint(x[390]*x[336]^2,"<=",135)
+addConstraint(x[221]*x[436]^2,"<=",460)
+addConstraint(x[152]*x[173]^2,"<=",341)
+addConstraint(x[306]*x[290]^2,"<=",353)
+addConstraint(x[156]*x[51]^2,"<=",311)
+addConstraint(x[232]*x[56]^2,"<=",321)
+addConstraint(x[261]*x[467]^2,"<=",401)
+addConstraint(x[361]*x[255]^2,"<=",313)
+addConstraint(x[152]*x[395]^2,"<=",333)
+addConstraint(x[412]*x[390]^2,"<=",283)
+addConstraint(x[418]*x[349]^2,"<=",486)
+addConstraint(x[368]*x[78]^2,"<=",424)
+addConstraint(x[330]*x[422]^2,"<=",444)
+addConstraint(x[240]*x[188]^2,"<=",336)
+addConstraint(x[189]*x[264]^2,"<=",260)
+addConstraint(x[58]*x[65]^2,"<=",372)
+addConstraint(x[58]*x[323]^2,"<=",110)
+addConstraint(x[483]*x[276]^2,"<=",201)
+addConstraint(x[158]*x[194]^2,"<=",106)
+addConstraint(x[6]*x[401]^2,"<=",215)
+addConstraint(x[394]*x[240]^2,"<=",114)
+addConstraint(x[481]*x[183]^2,"<=",365)
+addConstraint(x[225]*x[476]^2,"<=",398)
+96
+addConstraint(x[233]*x[62]^2,"<=",297)
+addConstraint(x[34]*x[355]^2,"<=",220)
+addConstraint(x[197]*x[166]^2,"<=",325)
+addConstraint(x[4]*x[16]^2,"<=",380)
+addConstraint(x[7]*x[260]^2,"<=",163)
+addConstraint(x[78]*x[114]^2,"<=",396)
+addConstraint(x[6]*x[45]^2,"<=",187)
+addConstraint(x[41]*x[274]^2,"<=",474)
+addConstraint(x[474]*x[146]^2,"<=",224)
+addConstraint(x[417]*x[141]^2,"<=",238)
+addConstraint(x[405]*x[46]^2,"<=",473)
+addConstraint(x[50]*x[462]^2,"<=",228)
+addConstraint(x[410]*x[98]^2,"<=",264)
+addConstraint(x[313]*x[150]^2,"<=",219)
+addConstraint(x[446]*x[482]^2,"<=",186)
+addConstraint(x[87]*x[360]^2,"<=",390)
+addConstraint(x[339]*x[118]^2,"<=",104)
+addConstraint(x[73]*x[470]^2,"<=",283)
+addConstraint(x[49]*x[110]^2,"<=",393)
+addConstraint(x[320]*x[356]^2,"<=",324)
+addConstraint(x[158]*x[457]^2,"<=",421)
+addConstraint(x[110]*x[360]^2,"<=",203)
+addConstraint(x[46]*x[361]^2,"<=",272)
+addConstraint(x[325]*x[496]^2,"<=",223)
+addConstraint(x[492]*x[411]^2,"<=",458)
+addConstraint(x[442]*x[141]^2,"<=",169)
+addConstraint(x[320]*x[92]^2,"<=",127)
+addConstraint(x[123]*x[112]^2,"<=",110)
+addConstraint(x[349]*x[225]^2,"<=",427)
+addConstraint(x[180]*x[140]^2,"<=",361)
+addConstraint(x[267]*x[404]^2,"<=",201)
+addConstraint(x[127]*x[65]^2,"<=",131)
+addConstraint(x[307]*x[332]^2,"<=",320)
+addConstraint(x[303]*x[167]^2,"<=",360)
+addConstraint(x[39]*x[321]^2,"<=",150)
+addConstraint(x[365]*x[483]^2,"<=",311)
+addConstraint(x[10]*x[309]^2,"<=",152)
+addConstraint(x[491]*x[106]^2,"<=",418)
+addConstraint(x[460]*x[112]^2,"<=",358)
+addConstraint(x[157]*x[398]^2,"<=",293)
+addConstraint(x[409]*x[74]^2,"<=",195)
+addConstraint(x[9]*x[319]^2,"<=",398)
+addConstraint(x[478]*x[56]^2,"<=",289)
+addConstraint(x[423]*x[464]^2,"<=",201)
+addConstraint(x[263]*x[439]^2,"<=",360)
+addConstraint(x[51]*x[481]^2,"<=",288)
+addConstraint(x[207]*x[281]^2,"<=",403)
+addConstraint(x[382]*x[264]^2,"<=",179)
+addConstraint(x[125]*x[5]^2,"<=",287)
+addConstraint(x[397]*x[161]^2,"<=",205)
+addConstraint(x[261]*x[85]^2,"<=",183)
+addConstraint(x[174]*x[449]^2,"<=",104)
+addConstraint(x[269]*x[394]^2,"<=",257)
+addConstraint(x[227]*x[187]^2,"<=",464)
+addConstraint(x[365]*x[258]^2,"<=",499)
+97
+addConstraint(x[48]*x[290]^2,"<=",131)
+addConstraint(x[428]*x[433]^2,"<=",208)
+addConstraint(x[146]*x[250]^2,"<=",119)
+addConstraint(x[348]*x[58]^2,"<=",192)
+addConstraint(x[164]*x[413]^2,"<=",189)
+addConstraint(x[359]*x[85]^2,"<=",326)
+addConstraint(x[135]*x[259]^2,"<=",182)
+addConstraint(x[68]*x[121]^2,"<=",337)
+addConstraint(x[305]*x[235]^2,"<=",399)
+addConstraint(x[247]*x[156]^2,"<=",109)
+addConstraint(x[371]*x[387]^2,"<=",262)
+addConstraint(x[482]*x[176]^2,"<=",169)
+addConstraint(x[484]*x[114]^2,"<=",237)
+addConstraint(x[499]*x[275]^2,"<=",411)
+addConstraint(x[105]*x[92]^2,"<=",499)
+addConstraint(x[179]*x[298]^2,"<=",406)
+addConstraint(x[422]*x[458]^2,"<=",323)
+addConstraint(x[315]*x[359]^2,"<=",342)
+addConstraint(x[164]*x[422]^2,"<=",262)
+addConstraint(x[459]*x[2]^2,"<=",486)
+addConstraint(x[254]*x[341]^2,"<=",328)
+addConstraint(x[462]*x[469]^2,"<=",381)
+addConstraint(x[323]*x[175]^2,"<=",359)
+addConstraint(x[68]*x[448]^2,"<=",294)
+addConstraint(x[160]*x[146]^2,"<=",119)
+addConstraint(x[270]*x[265]^2,"<=",210)
+addConstraint(x[106]*x[18]^2,"<=",242)
+addConstraint(x[191]*x[431]^2,"<=",459)
+addConstraint(x[456]*x[201]^2,"<=",294)
+addConstraint(x[131]*x[349]^2,"<=",342)
+addConstraint(x[288]*x[364]^2,"<=",323)
+addConstraint(x[2]*x[63]^2,"<=",378)
+addConstraint(x[3]*x[336]^2,"<=",358)
+addConstraint(x[2]*x[220]^2,"<=",407)
+addConstraint(x[125]*x[327]^2,"<=",103)
+addConstraint(x[310]*x[88]^2,"<=",250)
+addConstraint(x[361]*x[421]^2,"<=",258)
+addConstraint(x[352]*x[125]^2,"<=",242)
+addConstraint(x[245]*x[415]^2,"<=",338)
+addConstraint(x[226]*x[134]^2,"<=",210)
+addConstraint(x[480]*x[238]^2,"<=",313)
+addConstraint(x[359]*x[268]^2,"<=",189)
+addConstraint(x[8]*x[230]^2,"<=",324)
+addConstraint(x[221]*x[373]^2,"<=",242)
+addConstraint(x[443]*x[222]^2,"<=",102)
+addConstraint(x[488]*x[323]^2,"<=",267)
+addConstraint(x[105]*x[92]^2,"<=",183)
+addConstraint(x[304]*x[104]^2,"<=",132)
+addConstraint(x[459]*x[465]^2,"<=",398)
+addConstraint(x[182]*x[309]^2,"<=",470)
+addConstraint(x[286]*x[177]^2,"<=",178)
+addConstraint(x[249]*x[148]^2,"<=",358)
+addConstraint(x[271]*x[473]^2,"<=",118)
+addConstraint(x[297]*x[176]^2,"<=",230)
+addConstraint(x[382]*x[300]^2,"<=",290)
+98
+addConstraint(x[457]*x[380]^2,"<=",465)
+addConstraint(x[247]*x[450]^2,"<=",111)
+addConstraint(x[20]*x[256]^2,"<=",222)
+addConstraint(x[337]*x[246]^2,"<=",448)
+addConstraint(x[109]*x[357]^2,"<=",370)
+addConstraint(x[161]*x[50]^2,"<=",423)
+addConstraint(x[106]*x[433]^2,"<=",122)
+addConstraint(x[459]*x[432]^2,"<=",298)
+addConstraint(x[493]*x[320]^2,"<=",219)
+addConstraint(x[274]*x[489]^2,"<=",290)
+addConstraint(x[427]*x[11]^2,"<=",294)
+addConstraint(x[422]*x[485]^2,"<=",308)
+addConstraint(x[111]*x[168]^2,"<=",259)
+addConstraint(x[75]*x[466]^2,"<=",129)
+addConstraint(x[289]*x[412]^2,"<=",187)
+addConstraint(x[303]*x[218]^2,"<=",358)
+addConstraint(x[292]*x[493]^2,"<=",203)
+addConstraint(x[5]*x[352]^2,"<=",192)
+addConstraint(x[219]*x[392]^2,"<=",174)
+addConstraint(x[440]*x[239]^2,"<=",128)
+addConstraint(x[320]*x[91]^2,"<=",393)
+addConstraint(x[13]*x[192]^2,"<=",345)
+addConstraint(x[58]*x[48]^2,"<=",220)
+addConstraint(x[349]*x[476]^2,"<=",312)
+addConstraint(x[174]*x[215]^2,"<=",481)
+addConstraint(x[39]*x[335]^2,"<=",114)
+addConstraint(x[284]*x[419]^2,"<=",479)
+addConstraint(x[168]*x[152]^2,"<=",467)
+addConstraint(x[261]*x[195]^2,"<=",446)
+addConstraint(x[463]*x[274]^2,"<=",478)
+addConstraint(x[123]*x[439]^2,"<=",195)
+addConstraint(x[100]*x[396]^2,"<=",473)
+addConstraint(x[249]*x[440]^2,"<=",404)
+addConstraint(x[112]*x[134]^2,"<=",233)
+addConstraint(x[64]*x[291]^2,"<=",308)
+addConstraint(x[292]*x[435]^2,"<=",231)
+addConstraint(x[100]*x[307]^2,"<=",430)
+addConstraint(x[57]*x[326]^2,"<=",122)
+addConstraint(x[316]*x[224]^2,"<=",290)
+addConstraint(x[223]*x[416]^2,"<=",412)
+addConstraint(x[469]*x[461]^2,"<=",111)
+addConstraint(x[193]*x[332]^2,"<=",326)
+addConstraint(x[428]*x[395]^2,"<=",222)
+addConstraint(x[59]*x[381]^2,"<=",294)
+addConstraint(x[154]*x[238]^2,"<=",464)
+addConstraint(x[129]*x[91]^2,"<=",323)
+addConstraint(x[338]*x[225]^2,"<=",381)
+addConstraint(x[302]*x[171]^2,"<=",401)
+addConstraint(x[340]*x[82]^2,"<=",246)
+addConstraint(x[288]*x[210]^2,"<=",461)
+addConstraint(x[271]*x[406]^2,"<=",263)
+addConstraint(x[451]*x[32]^2,"<=",187)
+addConstraint(x[428]*x[375]^2,"<=",354)
+addConstraint(x[431]*x[113]^2,"<=",381)
+addConstraint(x[141]*x[491]^2,"<=",424)
+99
+addConstraint(x[407]*x[271]^2,"<=",138)
+addConstraint(x[358]*x[346]^2,"<=",187)
+addConstraint(x[70]*x[452]^2,"<=",360)
+addConstraint(x[45]*x[493]^2,"<=",119)
+addConstraint(x[178]*x[430]^2,"<=",280)
+addConstraint(x[421]*x[287]^2,"<=",441)
+addConstraint(x[398]*x[41]^2,"<=",377)
+addConstraint(x[364]*x[413]^2,"<=",301)
+addConstraint(x[160]*x[140]^2,"<=",375)
+addConstraint(x[142]*x[212]^2,"<=",149)
+addConstraint(x[500]*x[431]^2,"<=",187)
+addConstraint(x[336]*x[340]^2,"<=",170)
+addConstraint(x[329]*x[148]^2,"<=",373)
+addConstraint(x[395]*x[13]^2,"<=",342)
+addConstraint(x[191]*x[132]^2,"<=",457)
+addConstraint(x[197]*x[496]^2,"<=",449)
+addConstraint(x[379]*x[216]^2,"<=",311)
+addConstraint(x[487]*x[204]^2,"<=",189)
+addConstraint(x[135]*x[243]^2,"<=",433)
+addConstraint(x[365]*x[241]^2,"<=",200)
+addConstraint(x[451]*x[77]^2,"<=",181)
+addConstraint(x[484]*x[364]^2,"<=",163)
+addConstraint(x[260]*x[398]^2,"<=",482)
+addConstraint(x[42]*x[215]^2,"<=",125)
+addConstraint(x[134]*x[88]^2,"<=",458)
+addConstraint(x[423]*x[235]^2,"<=",300)
+addConstraint(x[440]*x[476]^2,"<=",102)
+addConstraint(x[157]*x[150]^2,"<=",475)
+addConstraint(x[280]*x[176]^2,"<=",329)
+addConstraint(x[19]*x[166]^2,"<=",398)
+addConstraint(x[459]*x[53]^2,"<=",163)
+addConstraint(x[469]*x[415]^2,"<=",246)
+addConstraint(x[143]*x[38]^2,"<=",338)
+addConstraint(x[362]*x[292]^2,"<=",170)
+addConstraint(x[29]*x[328]^2,"<=",396)
+addConstraint(x[124]*x[238]^2,"<=",150)
+addConstraint(x[375]*x[353]^2,"<=",284)
+addConstraint(x[234]*x[241]^2,"<=",354)
+addConstraint(x[21]*x[202]^2,"<=",356)
+addConstraint(x[185]*x[121]^2,"<=",446)
+addConstraint(x[40]*x[481]^2,"<=",495)
+addConstraint(x[213]*x[307]^2,"<=",395)
+addConstraint(x[263]*x[316]^2,"<=",165)
+addConstraint(x[50]*x[423]^2,"<=",418)
+addConstraint(x[194]*x[29]^2,"<=",229)
+addConstraint(x[88]*x[262]^2,"<=",260)
+addConstraint(x[344]*x[441]^2,"<=",150)
+addConstraint(x[180]*x[198]^2,"<=",136)
+addConstraint(x[429]*x[20]^2,"<=",258)
+addConstraint(x[99]*x[264]^2,"<=",237)
+addConstraint(x[36]*x[424]^2,"<=",121)
+addConstraint(x[241]*x[147]^2,"<=",322)
+addConstraint(x[236]*x[475]^2,"<=",122)
+addConstraint(x[291]*x[62]^2,"<=",284)
+addConstraint(x[361]*x[60]^2,"<=",175)
+100
+addConstraint(x[74]*x[328]^2,"<=",100)
+addConstraint(x[321]*x[447]^2,"<=",266)
+addConstraint(x[195]*x[380]^2,"<=",394)
+addConstraint(x[463]*x[148]^2,"<=",310)
+addConstraint(x[342]*x[424]^2,"<=",391)
+addConstraint(x[265]*x[326]^2,"<=",471)
+addConstraint(x[276]*x[161]^2,"<=",133)
+addConstraint(x[165]*x[26]^2,"<=",468)
+addConstraint(x[306]*x[270]^2,"<=",476)
+addConstraint(x[132]*x[24]^2,"<=",472)
+addConstraint(x[207]*x[404]^2,"<=",338)
+addConstraint(x[457]*x[293]^2,"<=",351)
+addConstraint(x[148]*x[50]^2,"<=",471)
+addConstraint(x[118]*x[249]^2,"<=",126)
+addConstraint(x[201]*x[401]^2,"<=",447)
+addConstraint(x[242]*x[107]^2,"<=",435)
+addConstraint(x[99]*x[67]^2,"<=",413)
+addConstraint(x[193]*x[403]^2,"<=",363)
+addConstraint(x[135]*x[403]^2,"<=",208)
+addConstraint(x[375]*x[448]^2,"<=",258)
+addConstraint(x[96]*x[292]^2,"<=",386)
+addConstraint(x[145]*x[274]^2,"<=",396)
+addConstraint(x[48]*x[394]^2,"<=",435)
+addConstraint(x[221]*x[237]^2,"<=",189)
+addConstraint(x[151]*x[215]^2,"<=",459)
+addConstraint(x[347]*x[312]^2,"<=",195)
+addConstraint(x[54]*x[388]^2,"<=",413)
+addConstraint(x[287]*x[448]^2,"<=",422)
+addConstraint(x[351]*x[313]^2,"<=",398)
+addConstraint(x[154]*x[288]^2,"<=",237)
+addConstraint(x[258]*x[149]^2,"<=",242)
+addConstraint(x[169]*x[163]^2,"<=",498)
+addConstraint(x[265]*x[135]^2,"<=",358)
+addConstraint(x[481]*x[350]^2,"<=",469)
+addConstraint(x[389]*x[135]^2,"<=",496)
+addConstraint(x[313]*x[235]^2,"<=",160)
+addConstraint(x[94]*x[7]^2,"<=",191)
+addConstraint(x[267]*x[3]^2,"<=",500)
+addConstraint(x[394]*x[424]^2,"<=",434)
+addConstraint(x[88]*x[297]^2,"<=",268)
+addConstraint(x[205]*x[349]^2,"<=",105)
+addConstraint(x[296]*x[78]^2,"<=",452)
+addConstraint(x[172]*x[225]^2,"<=",412)
+addConstraint(x[338]*x[370]^2,"<=",315)
+addConstraint(x[457]*x[487]^2,"<=",326)
+addConstraint(x[107]*x[121]^2,"<=",392)
+addConstraint(x[22]*x[267]^2,"<=",437)
+addConstraint(x[115]*x[473]^2,"<=",226)
+addConstraint(x[313]*x[118]^2,"<=",416)
+addConstraint(x[55]*x[53]^2,"<=",183)
+addConstraint(x[461]*x[230]^2,"<=",456)
+addConstraint(x[3]*x[111]^2,"<=",473)
+addConstraint(x[159]*x[380]^2,"<=",388)
+addConstraint(x[292]*x[69]^2,"<=",228)
+addConstraint(x[487]*x[170]^2,"<=",121)
+101
+addConstraint(x[320]*x[457]^2,"<=",333)
+addConstraint(x[144]*x[332]^2,"<=",245)
+addConstraint(x[286]*x[89]^2,"<=",264)
+addConstraint(x[116]*x[198]^2,"<=",284)
+addConstraint(x[222]*x[392]^2,"<=",123)
+addConstraint(x[470]*x[474]^2,"<=",125)
+addConstraint(x[50]*x[64]^2,"<=",420)
+addConstraint(x[114]*x[323]^2,"<=",155)
+addConstraint(x[440]*x[92]^2,"<=",223)
+addConstraint(x[386]*x[96]^2,"<=",411)
+addConstraint(x[243]*x[175]^2,"<=",251)
+addConstraint(x[21]*x[230]^2,"<=",445)
+addConstraint(x[316]*x[102]^2,"<=",478)
+addConstraint(x[406]*x[301]^2,"<=",133)
+addConstraint(x[50]*x[213]^2,"<=",477)
+addConstraint(x[425]*x[452]^2,"<=",493)
+addConstraint(x[438]*x[39]^2,"<=",499)
+addConstraint(x[263]*x[58]^2,"<=",321)
+addConstraint(x[127]*x[80]^2,"<=",148)
+addConstraint(x[100]*x[413]^2,"<=",233)
+addConstraint(x[401]*x[36]^2,"<=",297)
+addConstraint(x[458]*x[127]^2,"<=",235)
+addConstraint(x[102]*x[170]^2,"<=",431)
+addConstraint(x[263]*x[47]^2,"<=",381)
+addConstraint(x[322]*x[425]^2,"<=",246)
+addConstraint(x[131]*x[164]^2,"<=",247)
+addConstraint(x[252]*x[100]^2,"<=",262)
+addConstraint(x[340]*x[234]^2,"<=",415)
+addConstraint(x[462]*x[204]^2,"<=",398)
+addConstraint(x[498]*x[368]^2,"<=",383)
+addConstraint(x[94]*x[357]^2,"<=",456)
+addConstraint(x[249]*x[158]^2,"<=",350)
+addConstraint(x[300]*x[262]^2,"<=",267)
+addConstraint(x[179]*x[480]^2,"<=",383)
+addConstraint(x[249]*x[494]^2,"<=",325)
+addConstraint(x[155]*x[181]^2,"<=",135)
+addConstraint(x[224]*x[424]^2,"<=",238)
+addConstraint(x[259]*x[385]^2,"<=",350)
+addConstraint(x[486]*x[345]^2,"<=",451)
+addConstraint(x[319]*x[232]^2,"<=",427)
+addConstraint(x[13]*x[52]^2,"<=",410)
+addConstraint(x[25]*x[411]^2,"<=",258)
+addConstraint(x[65]*x[280]^2,"<=",272)
+addConstraint(x[341]*x[396]^2,"<=",395)
+addConstraint(x[419]*x[269]^2,"<=",418)
+addConstraint(x[152]*x[357]^2,"<=",500)
+addConstraint(x[358]*x[219]^2,"<=",470)
+addConstraint(x[93]*x[471]^2,"<=",449)
+addConstraint(x[116]*x[208]^2,"<=",149)
+addConstraint(x[135]*x[417]^2,"<=",410)
+addConstraint(x[492]*x[297]^2,"<=",453)
+addConstraint(x[11]*x[301]^2,"<=",218)
+addConstraint(x[27]*x[493]^2,"<=",170)
+addConstraint(x[294]*x[173]^2,"<=",250)
+addConstraint(x[277]*x[295]^2,"<=",105)
+102
+addConstraint(x[194]*x[120]^2,"<=",191)
+addConstraint(x[314]*x[215]^2,"<=",199)
+addConstraint(x[46]*x[199]^2,"<=",205)
+addConstraint(x[70]*x[356]^2,"<=",253)
+addConstraint(x[270]*x[35]^2,"<=",445)
+addConstraint(x[269]*x[198]^2,"<=",310)
+addConstraint(x[311]*x[371]^2,"<=",426)
+addConstraint(x[285]*x[199]^2,"<=",412)
+addConstraint(x[490]*x[17]^2,"<=",465)
+addConstraint(x[75]*x[93]^2,"<=",188)
+addConstraint(x[138]*x[90]^2,"<=",290)
+addConstraint(x[247]*x[84]^2,"<=",426)
+addConstraint(x[345]*x[169]^2,"<=",403)
+addConstraint(x[389]*x[13]^2,"<=",115)
+addConstraint(x[38]*x[240]^2,"<=",477)
+addConstraint(x[383]*x[205]^2,"<=",307)
+addConstraint(x[254]*x[415]^2,"<=",319)
+addConstraint(x[492]*x[325]^2,"<=",469)
+addConstraint(x[325]*x[225]^2,"<=",374)
+addConstraint(x[277]*x[419]^2,"<=",146)
+addConstraint(x[63]*x[163]^2,"<=",244)
+addConstraint(x[85]*x[291]^2,"<=",477)
+addConstraint(x[197]*x[335]^2,"<=",238)
+addConstraint(x[484]*x[274]^2,"<=",477)
+addConstraint(x[258]*x[21]^2,"<=",211)
+addConstraint(x[243]*x[354]^2,"<=",333)
+addConstraint(x[100]*x[137]^2,"<=",297)
+addConstraint(x[368]*x[285]^2,"<=",452)
+addConstraint(x[168]*x[165]^2,"<=",148)
+addConstraint(x[273]*x[336]^2,"<=",455)
+addConstraint(x[155]*x[35]^2,"<=",349)
+addConstraint(x[365]*x[96]^2,"<=",439)
+addConstraint(x[234]*x[418]^2,"<=",235)
+addConstraint(x[62]*x[175]^2,"<=",204)
+addConstraint(x[233]*x[138]^2,"<=",144)
+addConstraint(x[398]*x[182]^2,"<=",294)
+addConstraint(x[12]*x[339]^2,"<=",192)
+addConstraint(x[124]*x[153]^2,"<=",163)
+addConstraint(x[221]*x[432]^2,"<=",218)
+addConstraint(x[403]*x[246]^2,"<=",403)
+addConstraint(x[319]*x[260]^2,"<=",404)
+addConstraint(x[45]*x[369]^2,"<=",347)
+Time with 1 simultaneous executions: 12.90389935 seconds
+Time with 2 simultaneous executions: 23.7448729 seconds
+Time with 3 simultaneous executions: 35.49768867 seconds
+Time with 4 simultaneous executions: 46.43133025 seconds
+____________________________________________________________________
