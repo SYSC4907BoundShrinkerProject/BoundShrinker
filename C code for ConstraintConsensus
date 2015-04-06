@@ -1,0 +1,132 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+
+double * grad(double eqn[][3], int n)
+{
+double diff [n];
+for (int i = 0; i < n; i++){
+       diff [i]= pow(eqn[i][1], eqn[i][2]-1.0) * eqn[i][2] * eqn[i][0];}
+       return diff;
+}
+
+double magnitude(double test [], int n)
+{
+double mag = 0.0;
+for (int i = 0; i < n; i++)
+{mag += pow(test[i],2);}
+mag = sqrt(mag);
+return mag;
+}
+
+double Left_Hand_Side (double eqn[][3], int n)
+{  
+double Lhs;
+for (int i = 0; i < n; i++){
+       Lhs += pow(eqn[i][1], eqn[i][2]) * eqn[i][0];}
+return Lhs;
+}
+
+double violation (double LHS, double RHS, char operator)
+{      double v = 0.0;
+if(operator == '>'){ v = LHS - RHS;}
+       else if (operator == '<'){v = RHS - LHS;}
+       else {  v = abs(RHS - LHS); }
+return v;
+}
+
+double * feasibility_vector(double magn, double constraint [], double v, int d, int n)
+{
+double c [n];
+for (int i = 0; i < n; i++)
+{ 
+c[i] = (constraint[i] / magn)*v*d;  
+printf("%lf\n", c[i]);
+}
+return c;
+}
+
+double feas_distance (double *feasibility_vector, int n)
+{
+double feas_dist = 0.0;
+for (int i =0; i<n; i++)
+{
+            feas_dist += pow (feasibility_vector[i], 2);
+}
+       feas_dist = sqrt (feas_dist);
+return feas_dist;
+}
+ 
+int main()
+{
+    //Inputs
+    double coeffs2[] = { 5.0, 4.0, 2.0, 3.0};
+    double x_variables[] = {1.0, 2.0, 3.0, 2.0};
+    double power_of_variable[] = {3.0, 3.0, 2.0, 2.0};
+    double Movement_Tolerance = 0.25;
+    double Feasibility_Distance_Tolerance = 0.25;
+int NINF = 0;
+int Sj = 0; //represent the sum of the fij for variable xj over the feasibility vectors for all of the violated constraints.
+int nj = 0; //The number of violated constraints
+
+
+
+    int number_of_variables = sizeof(x_variables) / sizeof(x_variables[0]);
+    
+    double eqn[number_of_variables][3];
+ 
+for (int i =0; i<number_of_variables; i++)
+      {
+                    eqn[i][0] = coeffs2[i];
+     eqn[i][1] = x_variables[i];
+     eqn[i][2] = power_of_variable[i];
+       }
+
+        //Gradient
+        double *gradient= grad(eqn, number_of_variables);
+        double test [number_of_variables];
+
+
+        for (int count = 0; count < number_of_variables; count++)
+{test [count] = gradient[count];}
+ 
+int count =0;
+printf("(");
+while(count < number_of_variables)
+{printf("%lf ", test[count]); count++;}
+       printf(")\n");
+
+//Magnitude
+double magn = magnitude(test, number_of_variables);
+magn = pow(magn, 2);
+printf("magnitude: %lf\n", magn);
+
+//violation
+double e = 1*(pow(10, -6));
+int d [] = {1, -1}; 
+
+//double  LHS = Left_Hand_Side (eqn, number_of_variables);
+double v = violation (57, 50+e, '=');
+printf("violation: %lf\n", v);
+
+ 
+//Feasibility Vector
+double *test_vector = feasibility_vector(magn, test, v, -1, number_of_variables);
+double test2 [number_of_variables];
+
+for (int count = 0; count < number_of_variables; count++)
+{test2 [count] = test_vector[count];}
+ 
+int count2 =0;
+printf("(");
+while(count2 < number_of_variables)
+{printf("%lf ", test2[count2]); count2++;}
+       printf(")\n");
+
+
+//Feasibility Distance
+      double Feasibility_Distance = feas_distance (test2, number_of_variables);
+      printf("%lf\n", Feasibility_Distance);
+
+       return 0;
+}​
