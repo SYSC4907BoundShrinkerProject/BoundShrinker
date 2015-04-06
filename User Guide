@@ -1,0 +1,11 @@
+To use the bound shrinking software follow these steps:
+1. Download the files "BoundShrinker.jl" and "model.jl" from the repository and place them inside the same folder.
+2. Launch the Julia language program.
+3. Type “cd("file_path")" into Julia and hit enter where file path is the file path to the folder containing the 
+"BoundShrinker.jl" and "model.jl" files.
+4. Type "include("BoundShrinker.jl")" and hit enter.
+5. If you wish to change what model is used then edit the content of the "model.jl". 
+Use addBound(lowerBound,upperBound) to add variables and variable bounds to be shrunk.
+Use addConstraint(expression,inequality or equality sign string,right hand side) to add constraints.
+All addBound()s must appear before the addConstraint()s and the expressions in addConstraint() can only include variables
+Defined by the addBound()s. The expressions cannot be trigonometric, logarithmic or polynomials of degree higher than two.
